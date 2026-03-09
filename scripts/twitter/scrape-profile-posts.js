@@ -54,10 +54,10 @@ const CONFIG = {
   
   // Maximum scroll attempts before giving up
   // 💡 Increase if the profile has lots of media (slower loading)
-  maxScrollAttempts: 50,
+  maxScrollAttempts: 300,
   
   // Delay between scrolls (milliseconds)
-  // 💡 Increase to 3000-5000 if tweets aren't loading properly
+  // 💡 Increase to 3000-30000 if tweets aren't loading properly
   scrollDelay: 2000,
   
   // ==========================================
@@ -705,7 +705,7 @@ const CONFIG = {
    */
   function toPlainText() {
     let txt = `TWEETS FROM @${profileName.toUpperCase()}\n`;
-    txt += `${'='.repeat(50)}\n`;
+    txt += `${'='.repeat(300)}\n`;
     txt += `Scraped: ${result.scrapedAt}\n`;
     txt += `Total: ${result.totalTweets} tweets\n\n`;
     
@@ -716,7 +716,7 @@ const CONFIG = {
     txt += `Average Likes: ${stats.avgLikes}\n\n`;
     
     txt += `TWEETS\n`;
-    txt += `${'='.repeat(50)}\n\n`;
+    txt += `${'='.repeat(300)}\n\n`;
     
     finalTweets.forEach((t, i) => {
       txt += `[${i + 1}] ${t.displayTime}\n`;
@@ -724,7 +724,7 @@ const CONFIG = {
       txt += `${t.text}\n\n`;
       txt += `Likes: ${t.metrics.likes} | RTs: ${t.metrics.retweets} | Replies: ${t.metrics.replies} | Views: ${t.metrics.views}\n`;
       txt += `URL: ${t.url}\n`;
-      txt += `\n${'='.repeat(50)}\n\n`;
+      txt += `\n${'='.repeat(300)}\n\n`;
     });
     
     return txt;
@@ -783,7 +783,7 @@ const CONFIG = {
       <tr>
         <td>${i + 1}</td>
         <td>${t.displayTime}</td>
-        <td class="tweet-text">${t.text.substring(0, 150).replace(/</g, '&lt;').replace(/>/g, '&gt;')}${t.text.length > 150 ? '...' : ''}</td>
+        <td class="tweet-text">${t.text.substring(0, 1300).replace(/</g, '&lt;').replace(/>/g, '&gt;')}${t.text.length > 1300 ? '...' : ''}</td>
         <td>${t.metrics.likes}</td>
         <td>${t.metrics.retweets}</td>
         <td>${t.metrics.replies}</td>
