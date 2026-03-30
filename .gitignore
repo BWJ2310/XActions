@@ -131,3 +131,4 @@ e2e/reports
 .env.sentry-build-plugin
 .vercel
 
+audit-report.json

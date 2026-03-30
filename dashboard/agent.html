@@ -514,8 +514,14 @@
     if (token) headers['Authorization'] = `Bearer ${token}`;
 
     async function api(path, opts = {}) {
-      const res = await fetch(`${API_BASE}${path}`, { headers, ...opts });
-      return res.json();
+      try {
+        const res = await fetch(`${API_BASE}${path}`, { headers, ...opts });
+        if (!res.ok) return { error: `HTTP ${res.status}` };
+        return res.json();
+      } catch (e) {
+        console.warn(`⚠️ API ${path} failed:`, e.message);
+        return { error: e.message };
+      }
     }
 
     // ── State ────────────────────────────────────────────────────
@@ -545,6 +551,7 @@
     // ── Status ───────────────────────────────────────────────────
     async function refreshStatus() {
       const data = await api('/status');
+      if (data.error) return;
       const badge = document.getElementById('statusBadge');
       const btnStart = document.getElementById('btnStart');
       const btnStop = document.getElementById('btnStop');
@@ -574,6 +581,7 @@
     // ── Actions Feed ─────────────────────────────────────────────
     async function refreshActions() {
       const data = await api('/actions?limit=30');
+      if (data.error) return;
       const feed = document.getElementById('activityFeed');
 
       if (!data.actions || data.actions.length === 0) {
@@ -611,6 +619,7 @@
     // ── LLM Costs ────────────────────────────────────────────────
     async function refreshLLMCosts() {
       const data = await api('/llm-usage?days=7');
+      if (data.error) return;
       const container = document.getElementById('llmCosts');
 
       document.getElementById('statCost').textContent = data.cost || '$0';
@@ -638,6 +647,7 @@
     // ── Schedule ─────────────────────────────────────────────────
     async function refreshSchedule() {
       const data = await api('/schedule');
+      if (data.error) return;
       const container = document.getElementById('schedule');
 
       if (!data.schedule || data.schedule.length === 0) {
@@ -659,7 +669,7 @@
     // ── Growth Chart ─────────────────────────────────────────────
     async function refreshMetrics() {
       const data = await api('/metrics?days=30');
-      if (!data.followers || data.followers.length === 0) return;
+      if (data.error || !data.followers || data.followers.length === 0) return;
 
       const labels = data.followers.map(f => f.date);
       const values = data.followers.map(f => f.followers);

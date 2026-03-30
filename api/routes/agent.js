@@ -22,18 +22,17 @@ import express from 'express';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { authMiddleware } from '../middleware/auth.js';
+import { authMiddleware, optionalAuthMiddleware } from '../middleware/auth.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const router = express.Router();
 
-// All agent routes require authentication
-router.use(authMiddleware);
-
 // In-memory reference to running agent (set by start/stop endpoints)
+/** @type {import('../../src/agents/thoughtLeaderAgent.js').ThoughtLeaderAgent | null} */
 let agentInstance = null;
+/** @type {number | null} */
 let agentStartedAt = null;
 
 // ============================================================================
@@ -44,7 +43,7 @@ let agentStartedAt = null;
  * GET /api/agent/status
  * Returns running status, uptime, and basic stats
  */
-router.get('/status', (req, res) => {
+router.get('/status', optionalAuthMiddleware, (req, res) => {
   try {
     const running = agentInstance !== null;
     const uptime = running && agentStartedAt ? Date.now() - agentStartedAt : 0;
@@ -58,16 +57,19 @@ router.get('/status', (req, res) => {
     };
 
     // Get today's summary from database if agent is running
+    /** @type {Record<string, unknown>} */
+    const response = { ...status };
     if (running && agentInstance?.db) {
       try {
-        status.today = agentInstance.db.getTodaySummary();
+        response.today = agentInstance.db.getTodaySummary();
       } catch { /* db may not be ready */ }
     }
 
-    res.json(status);
+    res.json(response);
   } catch (error) {
-    console.error('❌ Agent status error:', error.message);
-    res.status(500).json({ error: error.message });
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('❌ Agent status error:', message);
+    res.status(500).json({ error: message });
   }
 });
 
@@ -79,9 +81,9 @@ router.get('/status', (req, res) => {
  * GET /api/agent/metrics?days=7
  * Returns daily metrics over a time period
  */
-router.get('/metrics', (req, res) => {
+router.get('/metrics', optionalAuthMiddleware, (req, res) => {
   try {
-    const days = Math.min(parseInt(req.query.days) || 7, 90);
+    const days = Math.min(parseInt(/** @type {string} */ (req.query.days)) || 7, 90);
 
     if (!agentInstance?.db) {
       return res.json({ metrics: [], message: 'Agent not running or no database' });
@@ -90,8 +92,9 @@ router.get('/metrics', (req, res) => {
     const report = agentInstance.db.getGrowthReport(days);
     res.json(report);
   } catch (error) {
-    console.error('❌ Agent metrics error:', error.message);
-    res.status(500).json({ error: error.message });
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('❌ Agent metrics error:', message);
+    res.status(500).json({ error: message });
   }
 });
 
@@ -103,11 +106,11 @@ router.get('/metrics', (req, res) => {
  * GET /api/agent/actions?limit=50&offset=0&type=like
  * Returns paginated action log
  */
-router.get('/actions', (req, res) => {
+router.get('/actions', optionalAuthMiddleware, (req, res) => {
   try {
-    const limit = Math.min(parseInt(req.query.limit) || 50, 200);
-    const offset = parseInt(req.query.offset) || 0;
-    const type = req.query.type || null;
+    const limit = Math.min(parseInt(/** @type {string} */ (req.query.limit)) || 50, 200);
+    const offset = parseInt(/** @type {string} */ (req.query.offset)) || 0;
+    const type = /** @type {string | undefined} */ (req.query.type) || undefined;
 
     if (!agentInstance?.db) {
       return res.json({ actions: [], total: 0, message: 'Agent not running or no database' });
@@ -118,8 +121,9 @@ router.get('/actions', (req, res) => {
 
     res.json({ actions, total, limit, offset });
   } catch (error) {
-    console.error('❌ Agent actions error:', error.message);
-    res.status(500).json({ error: error.message });
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('❌ Agent actions error:', message);
+    res.status(500).json({ error: message });
   }
 });
 
@@ -131,9 +135,9 @@ router.get('/actions', (req, res) => {
  * GET /api/agent/llm-usage?days=7
  * Returns LLM token usage and estimated cost
  */
-router.get('/llm-usage', (req, res) => {
+router.get('/llm-usage', optionalAuthMiddleware, (req, res) => {
   try {
-    const days = Math.min(parseInt(req.query.days) || 7, 90);
+    const days = Math.min(parseInt(/** @type {string} */ (req.query.days)) || 7, 90);
 
     if (!agentInstance?.db) {
       return res.json({ usage: [], cost: 0, message: 'Agent not running or no database' });
@@ -144,8 +148,9 @@ router.get('/llm-usage', (req, res) => {
 
     res.json({ usage, cost: `$${cost.toFixed(4)}`, costRaw: cost });
   } catch (error) {
-    console.error('❌ Agent LLM usage error:', error.message);
-    res.status(500).json({ error: error.message });
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('❌ Agent LLM usage error:', message);
+    res.status(500).json({ error: message });
   }
 });
 
@@ -157,7 +162,7 @@ router.get('/llm-usage', (req, res) => {
  * GET /api/agent/config
  * Returns current agent config (redacts API keys)
  */
-router.get('/config', (req, res) => {
+router.get('/config', authMiddleware, (req, res) => {
   try {
     const configPath = path.resolve('data', 'agent-config.json');
     if (!fs.existsSync(configPath)) {
@@ -177,8 +182,9 @@ router.get('/config', (req, res) => {
 
     res.json({ config: safe });
   } catch (error) {
-    console.error('❌ Agent config error:', error.message);
-    res.status(500).json({ error: error.message });
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('❌ Agent config error:', message);
+    res.status(500).json({ error: message });
   }
 });
 
@@ -186,9 +192,10 @@ router.get('/config', (req, res) => {
  * POST /api/agent/config
  * Update agent config (partial update)
  */
-router.post('/config', (req, res) => {
+router.post('/config', authMiddleware, (req, res) => {
   try {
     const configPath = path.resolve('data', 'agent-config.json');
+    /** @type {Record<string, unknown>} */
     let config = {};
     if (fs.existsSync(configPath)) {
       config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
@@ -198,7 +205,7 @@ router.post('/config', (req, res) => {
     const updates = req.body;
     for (const [key, value] of Object.entries(updates)) {
       if (typeof value === 'object' && !Array.isArray(value) && value !== null) {
-        config[key] = { ...config[key], ...value };
+        config[key] = { .../** @type {Record<string, unknown>} */ (config[key]), ...value };
       } else {
         config[key] = value;
       }
@@ -209,8 +216,9 @@ router.post('/config', (req, res) => {
 
     res.json({ success: true, message: 'Config updated' });
   } catch (error) {
-    console.error('❌ Agent config update error:', error.message);
-    res.status(500).json({ error: error.message });
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('❌ Agent config update error:', message);
+    res.status(500).json({ error: message });
   }
 });
 
@@ -222,7 +230,7 @@ router.post('/config', (req, res) => {
  * POST /api/agent/start
  * Start the thought leader agent
  */
-router.post('/start', async (req, res) => {
+router.post('/start', authMiddleware, async (req, res) => {
   try {
     if (agentInstance) {
       return res.status(400).json({ error: 'Agent is already running' });
@@ -244,7 +252,7 @@ router.post('/start', async (req, res) => {
     agentStartedAt = Date.now();
 
     // Run agent in background (don't await)
-    agentInstance.run().catch((err) => {
+    agentInstance.start().catch((/** @type {Error} */ err) => {
       console.error('❌ Agent crashed:', err.message);
       agentInstance = null;
       agentStartedAt = null;
@@ -252,10 +260,11 @@ router.post('/start', async (req, res) => {
 
     res.json({ success: true, message: 'Agent started', startedAt: new Date(agentStartedAt).toISOString() });
   } catch (error) {
-    console.error('❌ Agent start error:', error.message);
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('❌ Agent start error:', message);
     agentInstance = null;
     agentStartedAt = null;
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: message });
   }
 });
 
@@ -263,25 +272,26 @@ router.post('/start', async (req, res) => {
  * POST /api/agent/stop
  * Stop the running agent
  */
-router.post('/stop', async (req, res) => {
+router.post('/stop', authMiddleware, async (req, res) => {
   try {
     if (!agentInstance) {
       return res.status(400).json({ error: 'Agent is not running' });
     }
 
-    agentInstance._running = false;
-    await agentInstance.shutdown?.();
-    const uptime = Date.now() - agentStartedAt;
+    agentInstance.running = false;
+    await agentInstance.stop?.();
+    const uptime = agentStartedAt ? Date.now() - agentStartedAt : 0;
 
     agentInstance = null;
     agentStartedAt = null;
 
     res.json({ success: true, message: 'Agent stopped', uptime: formatUptime(uptime) });
   } catch (error) {
-    console.error('❌ Agent stop error:', error.message);
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('❌ Agent stop error:', message);
     agentInstance = null;
     agentStartedAt = null;
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: message });
   }
 });
 
@@ -295,7 +305,7 @@ router.post('/stop', async (req, res) => {
  *
  * Body: { text: string }
  */
-router.post('/feed-score', async (req, res) => {
+router.post('/feed-score', authMiddleware, async (req, res) => {
   try {
     const { text } = req.body;
     if (!text) return res.status(400).json({ error: 'text is required' });
@@ -309,8 +319,9 @@ router.post('/feed-score', async (req, res) => {
 
     res.json({ score, text: text.slice(0, 140) + (text.length > 140 ? '...' : '') });
   } catch (error) {
-    console.error('❌ Feed score error:', error.message);
-    res.status(500).json({ error: error.message });
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('❌ Feed score error:', message);
+    res.status(500).json({ error: message });
   }
 });
 
@@ -322,9 +333,9 @@ router.post('/feed-score', async (req, res) => {
  * GET /api/agent/report?days=30
  * Comprehensive growth report
  */
-router.get('/report', (req, res) => {
+router.get('/report', optionalAuthMiddleware, (req, res) => {
   try {
-    const days = Math.min(parseInt(req.query.days) || 30, 90);
+    const days = Math.min(parseInt(/** @type {string} */ (req.query.days)) || 30, 90);
 
     if (!agentInstance?.db) {
       return res.json({ report: null, message: 'Agent not running or no database' });
@@ -333,8 +344,9 @@ router.get('/report', (req, res) => {
     const report = agentInstance.db.getGrowthReport(days);
     res.json({ report, days });
   } catch (error) {
-    console.error('❌ Agent report error:', error.message);
-    res.status(500).json({ error: error.message });
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('❌ Agent report error:', message);
+    res.status(500).json({ error: message });
   }
 });
 
@@ -346,14 +358,14 @@ router.get('/report', (req, res) => {
  * GET /api/agent/schedule
  * Today's scheduled activities
  */
-router.get('/schedule', (req, res) => {
+router.get('/schedule', optionalAuthMiddleware, (req, res) => {
   try {
     if (!agentInstance?.scheduler) {
       return res.json({ schedule: [], message: 'Agent not running' });
     }
 
     const plan = agentInstance.scheduler.getDailyPlan();
-    const schedule = plan.map((a) => ({
+    const schedule = plan.map((/** @type {Record<string, unknown>} */ a) => ({
       type: a.type,
       scheduledFor: a.scheduledFor,
       durationMinutes: a.durationMinutes,
@@ -364,8 +376,9 @@ router.get('/schedule', (req, res) => {
 
     res.json({ schedule, count: schedule.length });
   } catch (error) {
-    console.error('❌ Agent schedule error:', error.message);
-    res.status(500).json({ error: error.message });
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('❌ Agent schedule error:', message);
+    res.status(500).json({ error: message });
   }
 });
 
@@ -377,9 +390,9 @@ router.get('/schedule', (req, res) => {
  * GET /api/agent/content?limit=20
  * Content created by the agent
  */
-router.get('/content', (req, res) => {
+router.get('/content', optionalAuthMiddleware, (req, res) => {
   try {
-    const limit = Math.min(parseInt(req.query.limit) || 20, 100);
+    const limit = Math.min(parseInt(/** @type {string} */ (req.query.limit)) || 20, 100);
 
     if (!agentInstance?.db) {
       return res.json({ content: [], message: 'Agent not running or no database' });
@@ -388,8 +401,9 @@ router.get('/content', (req, res) => {
     const content = agentInstance.db.getRecentPosts(limit);
     res.json({ content, count: content.length });
   } catch (error) {
-    console.error('❌ Agent content error:', error.message);
-    res.status(500).json({ error: error.message });
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('❌ Agent content error:', message);
+    res.status(500).json({ error: message });
   }
 });
 
@@ -397,6 +411,7 @@ router.get('/content', (req, res) => {
 // Helpers
 // ============================================================================
 
+/** @param {number} ms */
 function formatUptime(ms) {
   const seconds = Math.floor(ms / 1000);
   const minutes = Math.floor(seconds / 60);
