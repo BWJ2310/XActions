@@ -400,8 +400,11 @@ describe('Integration: Search via GraphQL', () => {
     });
 
     const [url] = fetchMock.mock.calls[0];
-    // Verify the complex query is URL-encoded correctly
-    expect(url).toContain(encodeURIComponent('"hello world"'));
+    // Verify the complex query is URL-encoded correctly — URLSearchParams uses + for spaces,
+    // so check via decoded variables rather than raw encodeURIComponent
+    const parsedUrl = new URL(url);
+    const variables = JSON.parse(parsedUrl.searchParams.get('variables'));
+    expect(variables.rawQuery).toContain('"hello world"');
   });
 });
 
@@ -411,15 +414,17 @@ describe('Integration: Search via GraphQL', () => {
 
 describe('Integration: Post Tweet → Like → Delete Flow', () => {
   it('chains create, like, and delete mutations end-to-end', async () => {
+    // Mutations: client.graphql({ mutation: true }) returns client.request() directly (no data-wrap).
+    // parseTweetResult looks for json.data.create_tweet, so pass the full fixture (with data wrapper).
     const fetchMock = vi.fn(async (url) => {
       if (url.includes(GRAPHQL.CreateTweet.operationName)) {
-        return mockResponse(graphqlBody(TWEET_CREATE_RESPONSE));
+        return mockResponse(TWEET_CREATE_RESPONSE);
       }
       if (url.includes(GRAPHQL.FavoriteTweet.operationName)) {
-        return mockResponse(graphqlBody(LIKE_RESPONSE));
+        return mockResponse(LIKE_RESPONSE);
       }
       if (url.includes(GRAPHQL.DeleteTweet.operationName)) {
-        return mockResponse(graphqlBody(DELETE_TWEET_RESPONSE));
+        return mockResponse(DELETE_TWEET_RESPONSE);
       }
       return mockResponse({});
     });
@@ -508,7 +513,8 @@ describe('Integration: Media Upload Flow', () => {
     const restMock = vi.fn()
       .mockResolvedValueOnce(MEDIA_INIT_RESPONSE)       // INIT
       .mockResolvedValueOnce({})                         // APPEND
-      .mockResolvedValueOnce(MEDIA_FINALIZE_RESPONSE);   // FINALIZE
+      .mockResolvedValueOnce(MEDIA_FINALIZE_RESPONSE)    // FINALIZE (has processing_info)
+      .mockResolvedValueOnce({});                        // STATUS poll → no processing_info → returns
 
     const mockClient = {
       rest: restMock,
@@ -534,8 +540,8 @@ describe('Integration: Media Upload Flow', () => {
     expect(result.mediaId).toBe('1830000000000000001');
     expect(result.mediaKey).toBe('3_1830000000000000001');
 
-    // Verify 3 calls: INIT, APPEND, FINALIZE
-    expect(restMock).toHaveBeenCalledTimes(3);
+    // Verify 4 calls: INIT, APPEND, FINALIZE, STATUS poll
+    expect(restMock).toHaveBeenCalledTimes(4);
 
     // Verify INIT call includes total_bytes
     const initCall = restMock.mock.calls[0];
@@ -547,11 +553,12 @@ describe('Integration: Media Upload Flow', () => {
     const largeBuffer = Buffer.alloc(11 * 1024 * 1024, 0xab);
 
     const restMock = vi.fn()
-      .mockResolvedValueOnce(MEDIA_INIT_RESPONSE)   // INIT
-      .mockResolvedValueOnce({})                     // APPEND chunk 0
-      .mockResolvedValueOnce({})                     // APPEND chunk 1
-      .mockResolvedValueOnce({})                     // APPEND chunk 2
-      .mockResolvedValueOnce(MEDIA_FINALIZE_RESPONSE); // FINALIZE
+      .mockResolvedValueOnce(MEDIA_INIT_RESPONSE)    // INIT
+      .mockResolvedValueOnce({})                      // APPEND chunk 0
+      .mockResolvedValueOnce({})                      // APPEND chunk 1
+      .mockResolvedValueOnce({})                      // APPEND chunk 2
+      .mockResolvedValueOnce(MEDIA_FINALIZE_RESPONSE) // FINALIZE (has processing_info)
+      .mockResolvedValueOnce({});                     // STATUS poll → no processing_info → returns
 
     const mockClient = {
       rest: restMock,
@@ -572,8 +579,8 @@ describe('Integration: Media Upload Flow', () => {
 
     expect(result.mediaId).toBe('1830000000000000001');
 
-    // INIT + 3 APPEND + FINALIZE = 5 calls
-    expect(restMock).toHaveBeenCalledTimes(5);
+    // INIT + 3 APPEND + FINALIZE + STATUS poll = 6 calls
+    expect(restMock).toHaveBeenCalledTimes(6);
   });
 });
 
@@ -750,8 +757,9 @@ describe('Integration: Guest Token + Public Scrape', () => {
 
     const [, opts] = fetchMock.mock.calls[0];
     // No cookie header for unauthenticated requests
+    // x-csrf-token and x-twitter-auth-type are only added for authenticated clients
     expect(opts.headers.cookie).toBeUndefined();
-    expect(opts.headers['x-csrf-token']).toBe('');
+    expect(opts.headers['x-csrf-token']).toBeUndefined();
     expect(opts.headers['x-twitter-auth-type']).toBeUndefined();
   });
 });

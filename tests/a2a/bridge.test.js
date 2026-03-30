@@ -88,10 +88,10 @@ describe('batchExecute', () => {
       { tool: 'x_get_profile', params: { username: 'elonmusk' } },
     ];
     // This will likely fail because local-tools isn't available in test env,
-    // but it should not throw — it returns { results, artifacts, errors }
+    // but it should not throw — it returns an array of step results
     const result = await bridge.batchExecute(tasks);
     expect(result).toBeDefined();
-    expect(Array.isArray(result.results)).toBe(true);
-    expect(result.results).toHaveLength(1);
+    expect(Array.isArray(result)).toBe(true);
+    expect(result).toHaveLength(1);
   });
 });

@@ -199,9 +199,7 @@ describe('GuestToken', () => {
       await expect(gt.activate()).rejects.toThrow(/rate limited/i);
     });
 
-    it('returns undefined when response has no guest_token field', async () => {
-      // The current implementation does not throw when guest_token is missing;
-      // it stores undefined and returns it.
+    it('throws when response has no guest_token field', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
@@ -210,8 +208,7 @@ describe('GuestToken', () => {
       });
 
       const gt = createGuestToken();
-      const result = await gt.activate();
-      expect(result).toBeUndefined();
+      await expect(gt.activate()).rejects.toThrow(/No guest_token/);
     });
   });
 
