@@ -441,6 +441,21 @@ app.get('/tutorials/:page', (req, res) => {
   });
 });
 
+app.get('/scripts', (req, res) => {
+  res.sendFile(path.join(__dirname, '../dashboard/scripts/index.html'));
+});
+
+// Scripts subdirectory — individual script pages
+app.get('/scripts/:slug', (req, res) => {
+  const slug = req.params.slug.replace(/[^a-zA-Z0-9-]/g, '');
+  const filePath = path.join(__dirname, `../dashboard/scripts/${slug}.html`);
+  res.sendFile(filePath, (err) => {
+    if (err) {
+      res.sendFile(path.join(__dirname, '../dashboard/404.html'));
+    }
+  });
+});
+
 app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, '../dashboard/admin.html'));
 });

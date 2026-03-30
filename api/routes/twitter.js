@@ -12,58 +12,41 @@ const prisma = new PrismaClient();
 // Twitter OAuth 2.0 configuration
 const TWITTER_CLIENT_ID = process.env.TWITTER_CLIENT_ID;
 const TWITTER_CLIENT_SECRET = process.env.TWITTER_CLIENT_SECRET;
-const CALLBACK_URL = `${process.env.API_URL}/api/twitter/callback`;
 
-// Validate FRONTEND_URL at startup — all OAuth redirects depend on it
-const FRONTEND_URL = (() => {
-  const url = process.env.FRONTEND_URL;
-  if (!url) {
-    if (process.env.NODE_ENV === 'production') {
-      console.error('❌ FRONTEND_URL is required in production — OAuth redirects will fail');
-    } else {
-      console.warn('⚠️  FRONTEND_URL not set — defaulting to http://localhost:3001');
-    }
-    return url || 'http://localhost:3001';
-  }
-  try {
-    const parsed = new URL(url);
-    if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('Bad protocol');
-    return url.replace(/\/$/, ''); // Strip trailing slash
-  } catch {
-    console.error(`❌ FRONTEND_URL is not a valid URL: "${url}" — OAuth redirects will fail`);
-    return 'http://localhost:3001';
-  }
-})();
-
-// In-memory OAuth state store (state -> { codeVerifier, flow, userId?, expiresAt })
-// Entries auto-expire after 10 minutes
-const oauthStateStore = new Map();
-
-function storeOAuthState(state, data) {
-  oauthStateStore.set(state, { ...data, expiresAt: Date.now() + 10 * 60 * 1000 });
-  // Cleanup expired entries
-  for (const [key, value] of oauthStateStore) {
-    if (value.expiresAt < Date.now()) oauthStateStore.delete(key);
-  }
+// Derive base URL — works on Vercel (VERCEL_URL), Railway (API_URL), or localhost
+function getBaseUrl() {
+  if (process.env.API_URL) return process.env.API_URL.replace(/\/$/, '');
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  return 'http://localhost:3001';
 }
 
-function consumeOAuthState(state) {
-  const data = oauthStateStore.get(state);
-  if (!data) return null;
-  if (data.expiresAt < Date.now()) {
-    oauthStateStore.delete(state);
+function getFrontendUrl() {
+  if (process.env.FRONTEND_URL) return process.env.FRONTEND_URL.replace(/\/$/, '');
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  return 'http://localhost:3000';
+}
+
+// Stateless OAuth state — encode data as a signed JWT used as the `state` param.
+// Works across serverless instances (no shared memory needed).
+function createOAuthState(data) {
+  return jwt.sign(data, process.env.JWT_SECRET || 'dev-secret', { expiresIn: '10m' });
+}
+
+function parseOAuthState(state) {
+  try {
+    return jwt.verify(state, process.env.JWT_SECRET || 'dev-secret');
+  } catch {
     return null;
   }
-  oauthStateStore.delete(state); // Single use — prevents replay
-  return data;
 }
 
 // Build Twitter OAuth URL
 function buildOAuthUrl(state, codeChallenge) {
+  const callbackUrl = `${getBaseUrl()}/api/twitter/callback`;
   const authUrl = new URL('https://x.com/i/oauth2/authorize');
   authUrl.searchParams.append('response_type', 'code');
   authUrl.searchParams.append('client_id', TWITTER_CLIENT_ID);
-  authUrl.searchParams.append('redirect_uri', CALLBACK_URL);
+  authUrl.searchParams.append('redirect_uri', callbackUrl);
   authUrl.searchParams.append('scope', 'tweet.read users.read follows.read follows.write offline.access');
   authUrl.searchParams.append('state', state);
   authUrl.searchParams.append('code_challenge', codeChallenge);
@@ -73,13 +56,14 @@ function buildOAuthUrl(state, codeChallenge) {
 
 // Exchange OAuth code for Twitter tokens and user info
 async function exchangeCodeForUser(code, codeVerifier) {
+  const callbackUrl = `${getBaseUrl()}/api/twitter/callback`;
   const tokenResponse = await axios.post(
     'https://api.x.com/2/oauth2/token',
     new URLSearchParams({
       code,
       grant_type: 'authorization_code',
       client_id: TWITTER_CLIENT_ID,
-      redirect_uri: CALLBACK_URL,
+      redirect_uri: callbackUrl,
       code_verifier: codeVerifier
     }),
     {
@@ -102,28 +86,25 @@ async function exchangeCodeForUser(code, codeVerifier) {
 
 // Sign in with X — no auth required, redirects to Twitter OAuth
 router.get('/login', (req, res) => {
-  const state = crypto.randomBytes(16).toString('hex');
   const codeVerifier = crypto.randomBytes(32).toString('base64url');
   const codeChallenge = crypto.createHash('sha256').update(codeVerifier).digest('base64url');
-
-  storeOAuthState(state, { codeVerifier, flow: 'login' });
+  const state = createOAuthState({ codeVerifier, flow: 'login' });
 
   res.redirect(buildOAuthUrl(state, codeChallenge));
 });
 
 // Connect X to existing account — requires auth
 router.get('/connect', authMiddleware, (req, res) => {
-  const state = crypto.randomBytes(16).toString('hex');
   const codeVerifier = crypto.randomBytes(32).toString('base64url');
   const codeChallenge = crypto.createHash('sha256').update(codeVerifier).digest('base64url');
-
-  storeOAuthState(state, { codeVerifier, flow: 'connect', userId: req.user.id });
+  const state = createOAuthState({ codeVerifier, flow: 'connect', userId: req.user.id });
 
   res.json({ authUrl: buildOAuthUrl(state, codeChallenge), state });
 });
 
 // OAuth callback — handles both login and connect flows
 router.get('/callback', async (req, res) => {
+  const FRONTEND_URL = getFrontendUrl();
   try {
     const { code, state } = req.query;
 
@@ -131,8 +112,8 @@ router.get('/callback', async (req, res) => {
       return res.redirect(`${FRONTEND_URL}/login?error=missing_params`);
     }
 
-    // Verify state and get stored data (single-use, prevents replay)
-    const oauthData = consumeOAuthState(state);
+    // Verify JWT-encoded state — cryptographically signed, no shared storage needed
+    const oauthData = parseOAuthState(state);
     if (!oauthData) {
       return res.redirect(`${FRONTEND_URL}/login?error=invalid_state`);
     }
@@ -151,17 +132,14 @@ router.get('/callback', async (req, res) => {
 
     // --- Login/Signup flow ---
     if (oauthData.flow === 'login') {
-      // Check if user already exists with this Twitter ID
       let user = await prisma.user.findUnique({ where: { twitterId: twitterUser.id } });
 
       if (user) {
-        // Returning user — update tokens
         user = await prisma.user.update({
           where: { id: user.id },
           data: twitterData
         });
       } else {
-        // New user — auto-register with Twitter username
         let username = twitterUser.username;
         const existingUsername = await prisma.user.findUnique({ where: { username } });
         if (existingUsername) {
@@ -184,14 +162,12 @@ router.get('/callback', async (req, res) => {
         });
       }
 
-      // Issue JWT and redirect to dashboard with token in URL fragment (not query param)
       const token = jwt.sign(
         { userId: user.id, username: user.username },
-        process.env.JWT_SECRET,
+        process.env.JWT_SECRET || 'dev-secret',
         { expiresIn: '7d' }
       );
 
-      // Use hash fragment so token isn't sent to server in subsequent requests or logged
       res.redirect(`${FRONTEND_URL}/login?oauth=success#token=${token}`);
       return;
     }
@@ -210,7 +186,7 @@ router.get('/callback', async (req, res) => {
     res.redirect(`${FRONTEND_URL}/login?error=invalid_flow`);
   } catch (error) {
     console.error('❌ Twitter OAuth callback error:', error.response?.data || error.message);
-    res.redirect(`${FRONTEND_URL}/login?error=twitter_connection_failed`);
+    res.redirect(`${getFrontendUrl()}/login?error=twitter_connection_failed`);
   }
 });
 
