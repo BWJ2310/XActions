@@ -78,9 +78,7 @@ import { initializePlugins, getPluginRoutes } from '../src/plugins/index.js';
 import { x402Middleware, x402HealthCheck, x402Pricing } from './middleware/x402.js';
 import aiDetectorMiddleware from './middleware/ai-detector.js';
 import { validateConfig as validateX402Config } from './config/x402-config.js';
-
-// x402 discovery (OpenAPI + .well-known/x402)
-import x402DiscoveryRoutes from './routes/x402-discovery.js';
+import { generateSpec as generateOpenAPISpec, generateWellKnown as generateX402WellKnown } from './openapi.js';
 
 const app = express();
 const httpServer = createServer(app);
@@ -204,9 +202,6 @@ app.use(aiDetectorMiddleware);
 // Optional x402 micropayment middleware (only active if X402_PAY_TO_ADDRESS is set)
 app.use(x402Middleware);
 
-// x402 discovery endpoints (before any auth/rate-limit middleware intercepts)
-app.use(x402DiscoveryRoutes);
-
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -226,7 +221,16 @@ app.get('/sitemap.xml', (req, res) => {
 });
 
 app.get('/manifest.json', (req, res) => {
-  res.type('application/json').sendFile(path.join(__dirname, '../public/manifest.json'));
+  res.type('application/manifest+json').sendFile(path.join(__dirname, '../public/manifest.json'));
+});
+
+// x402 discovery endpoints
+app.get('/openapi.json', (req, res) => {
+  res.type('application/json').json(generateOpenAPISpec());
+});
+
+app.get('/.well-known/x402', (req, res) => {
+  res.type('application/json').json(generateX402WellKnown());
 });
 
 // AI API endpoints

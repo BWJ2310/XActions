@@ -11,11 +11,27 @@ import { fileURLToPath } from 'url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DASHBOARD_DIR = join(__dirname, '..', 'dashboard');
 
-// Parse args
 const args = process.argv.slice(2);
 const port = args.includes('--port') ? args[args.indexOf('--port') + 1] : '3001';
 const BASE_URL = `http://localhost:${port}`;
 const verbose = args.includes('--verbose');
+const CONCURRENCY = 3; // pages in parallel
+
+// Errors that are expected / not fixable without running optional services
+const IGNORE_PATTERNS = [
+  /SES Removing unpermitted intrinsics/,
+  /Download error or resource isn't a valid image/,
+  // socket.io not running in dev — expected
+  /socket\.io/,
+  // a2a server (port 3100) is an optional separate service
+  /localhost:3100/,
+  // auth-gated pages will always have these in dev
+  /401/,
+];
+
+function isIgnored(text) {
+  return IGNORE_PATTERNS.some((p) => p.test(text));
+}
 
 async function discoverPages() {
   const pages = [];
@@ -27,8 +43,7 @@ async function discoverPages() {
       if (entry.isDirectory()) {
         await walkDir(relPath);
       } else if (entry.name.endsWith('.html')) {
-        const route = relPath === 'index.html' ? '/' : `/${relPath}`;
-        pages.push(route);
+        pages.push(relPath === 'index.html' ? '/' : `/${relPath}`);
       }
     }
   }
@@ -37,11 +52,103 @@ async function discoverPages() {
   return [...new Set(pages)].sort();
 }
 
+async function auditPage(browser, route) {
+  const url = `${BASE_URL}${route}`;
+  const issues = { errors: [], warnings: [], networkErrors: [] };
+
+  const page = await browser.newPage();
+
+  page.on('console', (msg) => {
+    const type = msg.type();
+    const text = msg.text();
+    if (isIgnored(text)) return;
+    if (type === 'error') issues.errors.push(text);
+    else if (type === 'warning') issues.warnings.push(text);
+  });
+
+  page.on('requestfailed', (req) => {
+    const reqUrl = req.url();
+    if (isIgnored(reqUrl)) return;
+    const failure = req.failure();
+    issues.networkErrors.push({ url: reqUrl, reason: failure?.errorText ?? 'unknown' });
+  });
+
+  page.on('response', (res) => {
+    const status = res.status();
+    const resUrl = res.url();
+    if (status < 400) return;
+    if (resUrl.includes('favicon')) return;
+    if (isIgnored(resUrl)) return;
+    issues.networkErrors.push({ url: resUrl, reason: `HTTP ${status}` });
+  });
+
+  try {
+    await page.goto(url, { waitUntil: 'networkidle2', timeout: 12000 });
+    await new Promise((r) => setTimeout(r, 300));
+  } catch (e) {
+    // Ignore Puppeteer-internal frame lifecycle errors — not real page errors
+    const msg = e.message;
+    if (
+      msg.includes('detached Frame') ||
+      msg.includes('detached frame') ||
+      msg.includes('Session closed') ||
+      msg.includes('Navigation timeout')
+    ) {
+      // Navigation timeout on networkidle2 is often just slow resources — not a real error
+    } else {
+      issues.errors.push(`Navigation failed: ${msg}`);
+    }
+  }
+
+  await page.close().catch(() => {});
+  return issues;
+}
+
+async function runBatch(browser, routes, results, counters) {
+  for (let i = 0; i < routes.length; i += CONCURRENCY) {
+    const batch = routes.slice(i, i + CONCURRENCY);
+    const settled = await Promise.allSettled(batch.map((r) => auditPage(browser, r)));
+
+    for (let j = 0; j < batch.length; j++) {
+      const route = batch[j];
+      const result = settled[j];
+
+      let issues = { errors: [], warnings: [], networkErrors: [] };
+      if (result.status === 'fulfilled') {
+        issues = result.value;
+      } else {
+        issues.errors.push(`Audit crashed: ${result.reason?.message}`);
+      }
+
+      const hasIssues = issues.errors.length || issues.warnings.length || issues.networkErrors.length;
+
+      if (hasIssues) {
+        counters.withIssues++;
+        console.log(`❌ ${route}`);
+        for (const err of issues.errors) {
+          console.log(`   🔴 ${err}`);
+          results.errors.push({ page: route, message: err });
+        }
+        for (const warn of issues.warnings) {
+          console.log(`   🟡 ${warn}`);
+          results.warnings.push({ page: route, message: warn });
+        }
+        for (const net of issues.networkErrors) {
+          console.log(`   🟠 ${net.reason} → ${net.url}`);
+          results.networkErrors.push({ page: route, ...net });
+        }
+      } else {
+        counters.clean++;
+        if (verbose) console.log(`✅ ${route}`);
+      }
+    }
+  }
+}
+
 async function auditPages() {
   console.log(`\n⚡ XActions Console Error Audit`);
   console.log(`  Base URL: ${BASE_URL}\n`);
 
-  // Check if server is running
   try {
     const res = await fetch(BASE_URL);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -51,7 +158,7 @@ async function auditPages() {
   }
 
   const pages = await discoverPages();
-  console.log(`📄 Found ${pages.length} pages to audit\n`);
+  console.log(`📄 Found ${pages.length} pages to audit (concurrency: ${CONCURRENCY})\n`);
 
   const browser = await puppeteer.launch({
     headless: true,
@@ -60,114 +167,25 @@ async function auditPages() {
   });
 
   const results = { errors: [], warnings: [], networkErrors: [] };
-  let pagesWithIssues = 0;
-  let pagesClean = 0;
-  let pagesSkipped = 0;
+  const counters = { clean: 0, withIssues: 0 };
 
-  // Reuse a single page to avoid memory/connection pressure
-  const page = await browser.newPage();
-
-  for (const route of pages) {
-    const url = `${BASE_URL}${route}`;
-    const pageIssues = { errors: [], warnings: [], networkErrors: [] };
-
-    // Set up listeners fresh each navigation
-    const onConsole = (msg) => {
-      const type = msg.type();
-      const text = msg.text();
-
-      // Skip noisy but harmless messages
-      if (text.includes('SES Removing unpermitted intrinsics')) return;
-      if (text.includes('Download error or resource')) return;
-      if (text.includes('the server responded with a status of')) return; // captured via response listener
-
-      if (type === 'error') {
-        pageIssues.errors.push(text);
-      } else if (type === 'warning') {
-        pageIssues.warnings.push(text);
-      }
-    };
-
-    const onRequestFailed = (req) => {
-      const reqUrl = req.url();
-      // socket.io failing is expected when the realtime server isn't started in dev
-      if (reqUrl.includes('socket.io')) return;
-      const failure = req.failure();
-      pageIssues.networkErrors.push({
-        url: reqUrl,
-        reason: failure ? failure.errorText : 'unknown',
-      });
-    };
-
-    const onResponse = (res) => {
-      const status = res.status();
-      const resUrl = res.url();
-      if (status >= 400 && !resUrl.includes('favicon')) {
-        // 401 on API routes is expected — page requires authentication
-        if (status === 401 && resUrl.includes('/api/')) return;
-        pageIssues.networkErrors.push({ url: resUrl, reason: `HTTP ${status}` });
-      }
-    };
-
-    page.on('console', onConsole);
-    page.on('requestfailed', onRequestFailed);
-    page.on('response', onResponse);
-
-    try {
-      await page.goto(url, { waitUntil: 'networkidle2', timeout: 10000 });
-      await new Promise((r) => setTimeout(r, 300));
-    } catch (e) {
-      // Only report if it's not a simple timeout on networkidle
-      if (!e.message.includes('Navigation timeout')) {
-        pageIssues.errors.push(`Navigation failed: ${e.message}`);
-      } else {
-        // Page loaded but had lingering requests — still check for errors
-      }
-    }
-
-    // Remove listeners before next page
-    page.off('console', onConsole);
-    page.off('requestfailed', onRequestFailed);
-    page.off('response', onResponse);
-
-    const hasIssues =
-      pageIssues.errors.length || pageIssues.warnings.length || pageIssues.networkErrors.length;
-
-    if (hasIssues) {
-      pagesWithIssues++;
-      console.log(`❌ ${route}`);
-      for (const err of pageIssues.errors) {
-        console.log(`   🔴 ERROR: ${err}`);
-        results.errors.push({ page: route, message: err });
-      }
-      for (const warn of pageIssues.warnings) {
-        console.log(`   🟡 WARN:  ${warn}`);
-        results.warnings.push({ page: route, message: warn });
-      }
-      for (const net of pageIssues.networkErrors) {
-        console.log(`   🟠 NET:   ${net.reason} → ${net.url}`);
-        results.networkErrors.push({ page: route, ...net });
-      }
-    } else {
-      pagesClean++;
-      if (verbose) console.log(`✅ ${route}`);
-    }
+  try {
+    await runBatch(browser, pages, results, counters);
+  } finally {
+    await browser.close();
   }
-
-  await browser.close();
 
   // Summary
   console.log(`\n${'─'.repeat(60)}`);
   console.log(`📊 Audit Summary`);
   console.log(`   Pages scanned:      ${pages.length}`);
-  console.log(`   Clean:              ${pagesClean}`);
-  console.log(`   With issues:        ${pagesWithIssues}`);
+  console.log(`   Clean:              ${counters.clean}`);
+  console.log(`   With issues:        ${counters.withIssues}`);
   console.log(`   Console errors:     ${results.errors.length}`);
   console.log(`   Console warnings:   ${results.warnings.length}`);
   console.log(`   Network errors:     ${results.networkErrors.length}`);
   console.log(`${'─'.repeat(60)}\n`);
 
-  // Deduplicated error report
   if (results.errors.length || results.networkErrors.length) {
     console.log(`🔍 Unique Issues:\n`);
 
@@ -175,39 +193,31 @@ async function auditPages() {
     if (uniqueErrors.length) {
       console.log(`  Console Errors (${uniqueErrors.length} unique):`);
       for (const err of uniqueErrors) {
-        const affectedPages = results.errors.filter((e) => e.message === err).map((e) => e.page);
-        console.log(`    [${affectedPages.length}x] ${err}`);
-        if (affectedPages.length <= 5) {
-          for (const p of affectedPages) console.log(`         → ${p}`);
-        } else {
-          for (const p of affectedPages.slice(0, 3)) console.log(`         → ${p}`);
-          console.log(`         ... and ${affectedPages.length - 3} more`);
-        }
+        const pages = results.errors.filter((e) => e.message === err).map((e) => e.page);
+        console.log(`    [${pages.length}x] ${err}`);
+        const show = pages.slice(0, 3);
+        for (const p of show) console.log(`         → ${p}`);
+        if (pages.length > 3) console.log(`         ... +${pages.length - 3} more`);
       }
     }
 
-    // Group network errors by the resource URL (strip query strings for dedup)
     const netByResource = new Map();
     for (const ne of results.networkErrors) {
-      const resourceUrl = ne.url.split('?')[0];
-      const key = `${ne.reason} → ${resourceUrl}`;
+      const key = `${ne.reason} → ${ne.url.split('?')[0]}`;
       if (!netByResource.has(key)) netByResource.set(key, []);
       netByResource.get(key).push(ne.page);
     }
     if (netByResource.size) {
       console.log(`\n  Network Errors (${netByResource.size} unique resources):`);
-      for (const [key, affectedPages] of netByResource) {
-        console.log(`    [${affectedPages.length}x] ${key}`);
-        if (affectedPages.length <= 3) {
-          for (const p of affectedPages) console.log(`         → ${p}`);
-        } else {
-          console.log(`         → ${affectedPages[0]}, ${affectedPages[1]}, ... +${affectedPages.length - 2} more`);
-        }
+      for (const [key, pages] of netByResource) {
+        console.log(`    [${pages.length}x] ${key}`);
+        const show = pages.slice(0, 2);
+        for (const p of show) console.log(`         → ${p}`);
+        if (pages.length > 2) console.log(`         ... +${pages.length - 2} more`);
       }
     }
   }
 
-  // Write JSON report
   const reportPath = join(__dirname, '..', 'audit-report.json');
   await writeFile(
     reportPath,
@@ -216,8 +226,8 @@ async function auditPages() {
         timestamp: new Date().toISOString(),
         baseUrl: BASE_URL,
         pagesScanned: pages.length,
-        pagesClean,
-        pagesWithIssues,
+        pagesClean: counters.clean,
+        pagesWithIssues: counters.withIssues,
         errors: results.errors,
         warnings: results.warnings,
         networkErrors: results.networkErrors,
@@ -228,7 +238,7 @@ async function auditPages() {
   );
   console.log(`\n📁 Full report saved to audit-report.json`);
 
-  process.exit(pagesWithIssues > 0 ? 1 : 0);
+  process.exit(counters.withIssues > 0 ? 1 : 0);
 }
 
 auditPages().catch((err) => {
