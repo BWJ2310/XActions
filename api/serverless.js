@@ -96,30 +96,39 @@ function x402Gate(req, res, next) {
   const dollarAmount = parseFloat(price.replace('$', ''));
   const maxAmount = Math.round(dollarAmount * 1_000_000).toString();
 
-  const resource = `https://xactions.app${req.path}`;
+  const url = `https://xactions.app${req.path}`;
+  const method = req.method;
   const asset = USDC_ADDRESSES[NETWORK] || USDC_ADDRESSES['eip155:8453'];
 
-  res.status(402).json({
+  const payload = {
     x402Version: 2,
+    resource: {
+      url,
+      method,
+      description: `XActions AI API — ${operation || 'ai operation'}`,
+      mimeType: 'application/json',
+    },
     accepts: [
       {
         scheme: 'exact',
         network: NETWORK,
-        maxAmountRequired: maxAmount,
-        resource,
-        description: `XActions AI API — ${operation || 'ai operation'}`,
-        mimeType: 'application/json',
+        amount: maxAmount,
+        asset,
         payTo: PAY_TO_ADDRESS,
         maxTimeoutSeconds: 300,
-        asset,
         extra: {
           name: 'USD Coin',
           version: '2',
         },
       },
     ],
-    error: 'Payment Required',
-  });
+  };
+
+  const encoded = Buffer.from(JSON.stringify(payload)).toString('base64');
+  res.status(402)
+    .set('payment-required', encoded)
+    .set('content-type', 'application/json')
+    .end();
 }
 
 // AI API — free info endpoints
