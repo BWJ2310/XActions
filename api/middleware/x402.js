@@ -21,6 +21,7 @@ import {
   NETWORK,
   AI_OPERATION_PRICES,
   SCRIPT_PRICES,
+  SCRIPT_RUN_PRICE,
   getOperationName,
   SUPPORTED_NETWORKS,
   getAcceptedNetworks,
@@ -65,6 +66,13 @@ function buildRouteConfig() {
       payTo: PAY_TO_ADDRESS,
     };
   }
+
+  // Script run route — single endpoint, priced higher than download
+  routes['POST /api/scripts/run'] = {
+    price: SCRIPT_RUN_PRICE,
+    network: NETWORK,
+    payTo: PAY_TO_ADDRESS,
+  };
 
   return routes;
 }
@@ -193,8 +201,9 @@ function extractOperation(requirements) {
   if (!requirements?.resource) return 'unknown';
   const aiMatch = requirements.resource.match(/\/api\/ai\/([^/]+)\/([^/?]+)/);
   if (aiMatch) return `${aiMatch[1]}:${aiMatch[2]}`;
+  if (requirements.resource.endsWith('/api/scripts/run')) return 'script:run';
   const scriptMatch = requirements.resource.match(/\/api\/scripts\/((?:automation|src)\/[^/?]+)/);
-  if (scriptMatch) return `script:${scriptMatch[1]}`;
+  if (scriptMatch) return `script:download:${scriptMatch[1]}`;
   return 'unknown';
 }
 

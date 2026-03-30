@@ -16,6 +16,7 @@ import { autoLikeBrowser } from './operations/puppeteer/autoLike.js';
 import { followEngagersBrowser } from './operations/puppeteer/followEngagers.js';
 import { keywordFollowBrowser } from './operations/puppeteer/keywordFollow.js';
 import { autoCommentBrowser } from './operations/puppeteer/autoComment.js';
+import { runBrowserScript } from './operations/puppeteer/scriptRunner.js';
 
 const prisma = new PrismaClient();
 
@@ -319,6 +320,16 @@ operationsQueue.process('autoComment', 2, async (job) => {
   }
   
   return await processAutoComment(job.data, () => isJobCancelled(job.data.operationId));
+});
+
+// Process jobs - scriptRun (generic browser script executor)
+operationsQueue.process('scriptRun', 2, async (job) => {
+  console.log(`🔄 Processing job ${job.id}: scriptRun (${job.data.config?.scriptPath})`);
+  return await runBrowserScript(
+    job.data.config,
+    (message) => job.progress(message),
+    () => isJobCancelled(job.data.operationId)
+  );
 });
 
 // Job event handlers

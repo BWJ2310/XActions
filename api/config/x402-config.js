@@ -656,6 +656,13 @@ export const SCRIPT_PRICES = {
   'automation/multiAccount': '$0.01',
 };
 
+/**
+ * Price for POST /api/scripts/run
+ * Running a script costs more than downloading it — it spins up a real
+ * Puppeteer session and performs actions on the caller's X account.
+ */
+export const SCRIPT_RUN_PRICE = '$0.025';
+
 // Route configuration for x402 middleware
 export function getRouteConfig(payTo) {
   const routes = {};
