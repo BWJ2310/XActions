@@ -15,15 +15,15 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Validate required environment variables in production
+// Warn about missing environment variables — logged at startup, not a hard exit
+// (Exiting before httpServer.listen() would kill the process before Railway's health check can respond)
 if (process.env.NODE_ENV === 'production') {
   const required = ['DATABASE_URL', 'JWT_SECRET'];
   const missing = required.filter(key => !process.env[key]);
   if (missing.length > 0) {
     console.error(`❌ Missing required environment variables: ${missing.join(', ')}`);
-    process.exit(1);
+    console.error('❌ Set these in the Railway dashboard under Variables.');
   }
-  // Warn about default secrets
   if (process.env.JWT_SECRET?.includes('change-this')) {
     console.warn('⚠️  Warning: Using default JWT_SECRET - please set a secure value!');
   }
