@@ -359,7 +359,11 @@
 
   <!-- ── JavaScript ───────────────────────────────── -->
   <script>
-    const API = '/api/graph';
+    // Use Railway API for graph routes (not available in Vercel serverless)
+    const RAILWAY_BASE = 'https://xactions-api.up.railway.app';
+    const API = window.location.hostname === 'localhost'
+      ? 'http://localhost:3001/api/graph'
+      : `${RAILWAY_BASE}/api/graph`;
     const tooltip = document.getElementById('tooltip');
     const graphSvg = document.getElementById('graphSvg');
     const emptyState = document.getElementById('emptyState');
@@ -373,37 +377,42 @@
     const COLORS = ['#1d9bf0','#00ba7c','#f4212e','#ffad1f','#7856ff','#f91880','#ff6f00','#00bcd4','#8bc34a','#e91e63'];
     const clusterColor = (id) => COLORS[id % COLORS.length];
 
+    function authHeaders() {
+      const token = localStorage.getItem('authToken');
+      return token ? { 'Authorization': `Bearer ${token}` } : {};
+    }
+
     // ── API helpers ────────────────────────────────────
     const api = {
       async build(username, depth, maxNodes) {
         const res = await fetch(`${API}/build`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...authHeaders() },
           body: JSON.stringify({ username: username.replace(/^@/, ''), depth, maxNodes }),
         });
         return res.json();
       },
       async list() {
-        const res = await fetch(API);
+        const res = await fetch(API, { headers: authHeaders() });
         return res.json();
       },
       async get(id) {
-        const res = await fetch(`${API}/${id}`);
+        const res = await fetch(`${API}/${id}`, { headers: authHeaders() });
         return res.json();
       },
       async del(id) {
-        await fetch(`${API}/${id}`, { method: 'DELETE' });
+        await fetch(`${API}/${id}`, { method: 'DELETE', headers: authHeaders() });
       },
       async analyze(id) {
-        const res = await fetch(`${API}/${id}/analysis`);
+        const res = await fetch(`${API}/${id}/analysis`, { headers: authHeaders() });
         return res.json();
       },
       async recommend(id) {
-        const res = await fetch(`${API}/${id}/recommendations`);
+        const res = await fetch(`${API}/${id}/recommendations`, { headers: authHeaders() });
         return res.json();
       },
       async visualize(id) {
-        const res = await fetch(`${API}/${id}/visualization?format=d3`);
+        const res = await fetch(`${API}/${id}/visualization?format=d3`, { headers: authHeaders() });
         return res.json();
       },
     };
@@ -727,7 +736,7 @@
     async function refreshGraphList() {
       try {
         const data = await api.list();
-        const list = data.graphs || data || [];
+        const list = Array.isArray(data.graphs) ? data.graphs : Array.isArray(data) ? data : [];
         const el = document.getElementById('graphList');
 
         if (list.length === 0) {
@@ -739,8 +748,8 @@
           <div class="card${currentGraph?.id === g.id ? ' card--active' : ''}" data-graph-id="${g.id}">
             <div class="card__title">@${g.seed || g.id}</div>
             <div class="card__meta">
-              <span>${g.nodeCount || '?'} nodes</span>
-              <span>${g.edgeCount || '?'} edges</span>
+              <span>${g.nodesCount ?? g.nodeCount ?? '?'} nodes</span>
+              <span>${g.edgesCount ?? g.edgeCount ?? '?'} edges</span>
               <span>${g.createdAt ? new Date(g.createdAt).toLocaleDateString() : ''}</span>
             </div>
             <div style="margin-top:6px;display:flex;gap:4px;">
