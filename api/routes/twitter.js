@@ -15,14 +15,14 @@ const TWITTER_CLIENT_SECRET = process.env.TWITTER_CLIENT_SECRET;
 
 // Derive base URL — works on Vercel (VERCEL_URL), Railway (API_URL), or localhost
 function getBaseUrl() {
-  if (process.env.API_URL) return process.env.API_URL.replace(/\/$/, '');
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  if (process.env.API_URL) return process.env.API_URL.trim().replace(/\/$/, '');
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL.trim()}`;
   return 'http://localhost:3001';
 }
 
 function getFrontendUrl() {
-  if (process.env.FRONTEND_URL) return process.env.FRONTEND_URL.replace(/\/$/, '');
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  if (process.env.FRONTEND_URL) return process.env.FRONTEND_URL.trim().replace(/\/$/, '');
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL.trim()}`;
   return 'http://localhost:3000';
 }
 
