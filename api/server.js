@@ -430,9 +430,6 @@ app.get('/tutorials', (req, res) => {
   res.sendFile(path.join(__dirname, '../dashboard/tutorials.html'));
 });
 
-app.get('/unfollow', (req, res) => res.redirect(301, '/tutorials/unfollow'));
-app.get('/unfollow.html', (req, res) => res.redirect(301, '/tutorials/unfollow'));
-
 // Tutorials subdirectory
 app.get('/tutorials/:page', (req, res) => {
   const page = req.params.page.replace(/[^a-zA-Z0-9-]/g, ''); // Sanitize
