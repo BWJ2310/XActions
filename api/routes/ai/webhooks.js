@@ -11,6 +11,7 @@ import crypto from 'crypto';
 const router = express.Router();
 
 const generateOperationId = () => `ai-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+/** @param {import('express').Response} res @param {string} id @param {string} type @param {Record<string, unknown>} config */
 const queueOp = async (res, id, type, config) => {
   try { const { queueJob } = await import('../../services/jobQueue.js'); await queueJob({ id, type, config, status: 'queued' }); } catch { /* */ }
   return res.json({ success: true, operationId: id, status: 'queued', statusUrl: `/api/ai/action/status/${id}` });

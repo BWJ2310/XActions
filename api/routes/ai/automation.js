@@ -16,6 +16,7 @@ const router = express.Router();
 const generateOperationId = () =>
   `ai-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
 
+/** @param {import('express').Request} req @param {import('express').Response} res @returns {string | null} */
 const requireSession = (req, res) => {
   const sessionCookie = req.body.sessionCookie || req.headers['x-session-cookie'];
   if (!sessionCookie) {
@@ -29,6 +30,7 @@ const requireSession = (req, res) => {
   return sessionCookie;
 };
 
+/** @param {import('express').Response} res @param {string} operationId @param {string} type @param {Record<string, unknown>} config */
 const queueOperation = async (res, operationId, type, config) => {
   try {
     const { queueJob } = await import('../../services/jobQueue.js');

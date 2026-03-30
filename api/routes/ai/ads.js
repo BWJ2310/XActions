@@ -15,12 +15,14 @@ const router = express.Router();
 const generateOperationId = () =>
   `ai-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
 
+/** @param {import('express').Request} req @param {import('express').Response} res @returns {string | null} */
 const requireSession = (req, res) => {
   const sessionCookie = req.body.sessionCookie || req.headers['x-session-cookie'];
   if (!sessionCookie) { res.status(400).json({ success: false, error: 'SESSION_REQUIRED', message: 'Provide sessionCookie in body or X-Session-Cookie header' }); return null; }
   return sessionCookie;
 };
 
+/** @param {import('express').Response} res @param {string} operationId @param {string} type @param {Record<string, unknown>} config */
 const queueOperation = async (res, operationId, type, config) => {
   try { const { queueJob } = await import('../../services/jobQueue.js'); await queueJob({ id: operationId, type, config, status: 'queued' }); } catch { /* queue unavailable */ }
   return res.json({ success: true, operationId, status: 'queued', statusUrl: `/api/ai/action/status/${operationId}` });
