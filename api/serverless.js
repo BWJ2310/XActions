@@ -50,14 +50,15 @@ app.get('/.well-known/x402', (req, res) => {
   res.type('application/json').json(generateWellKnown());
 });
 
-// AI API — free info endpoints
+// x402 payment middleware — must be global so req.path is the full path
+app.use(x402Middleware);
+
+// AI API — free info endpoints (exempt from x402 by the middleware)
 app.get('/api/ai/health', x402HealthCheck);
 app.get('/api/ai/pricing', x402Pricing);
 
-// AI API — x402 payment gate for all paid endpoints
-// The middleware returns 402 when no X-PAYMENT header is present.
-// Actual AI execution is handled by the Railway deployment.
-app.use('/api/ai', x402Middleware, (req, res) => {
+// AI API — catch-all after x402 gate (payment verified, execution on Railway)
+app.use('/api/ai', (req, res) => {
   res.status(503).json({
     error: 'AI execution requires Railway deployment',
     message: 'Payment accepted. Connect to the Railway API for execution.',
