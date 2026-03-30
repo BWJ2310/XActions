@@ -6,8 +6,11 @@ import crypto from 'crypto';
 
 // Encryption key derived from JWT_SECRET
 const getEncryptionKey = () => {
-  const secret = process.env.JWT_SECRET || 'xactions-default-key';
-  return crypto.createHash('sha256').update(secret).digest();
+  const secret = process.env.JWT_SECRET;
+  if (!secret && process.env.NODE_ENV === 'production') {
+    throw new Error('JWT_SECRET must be set in production');
+  }
+  return crypto.createHash('sha256').update(secret || 'dev-only-key').digest();
 };
 
 /**
@@ -73,7 +76,10 @@ export function escapeHtml(str) {
  * Generate CSRF token
  */
 export function generateCsrfToken(sessionId) {
-  const secret = process.env.JWT_SECRET || 'xactions-csrf';
+  const secret = process.env.JWT_SECRET;
+  if (!secret && process.env.NODE_ENV === 'production') {
+    throw new Error('JWT_SECRET must be set in production');
+  }
   return crypto
     .createHmac('sha256', secret)
     .update(sessionId + Date.now().toString())

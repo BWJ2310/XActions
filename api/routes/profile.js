@@ -32,7 +32,7 @@ router.get('/:username', async (req, res) => {
 
     res.json({ operationId: operation.id, status: 'queued', message: 'Profile fetch queued' });
   } catch (error) {
-    console.error('Get profile error:', error);
+    console.error('❌ Get profile error:', error);
     res.status(500).json({ error: 'Failed to fetch profile' });
   }
 });
@@ -68,7 +68,7 @@ router.put('/update', async (req, res) => {
 
     res.json({ operationId: operation.id, status: 'queued', message: 'Profile update queued' });
   } catch (error) {
-    console.error('Update profile error:', error);
+    console.error('❌ Update profile error:', error);
     res.status(500).json({ error: 'Failed to update profile' });
   }
 });

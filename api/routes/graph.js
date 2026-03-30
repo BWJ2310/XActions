@@ -15,8 +15,12 @@
  */
 
 import express from 'express';
+import { authenticate } from '../middleware/auth.js';
 
 const router = express.Router();
+
+// Require authentication for all graph routes
+router.use(authenticate);
 
 // Lazy-load graph module to avoid circular deps
 let _graph = null;

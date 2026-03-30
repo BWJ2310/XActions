@@ -71,7 +71,7 @@ router.get('/status', (req, res) => {
     }
     res.json({ automations: statuses });
   } catch (error) {
-    console.error('Status error:', error);
+    console.error('❌ Status error:', error);
     res.status(500).json({ error: 'Failed to get automation status' });
   }
 });
@@ -111,7 +111,7 @@ router.post('/:name/start', (req, res) => {
 
     res.json({ status: 'started', automation: state });
   } catch (error) {
-    console.error('Start error:', error);
+    console.error('❌ Start error:', error);
     res.status(500).json({ error: 'Failed to start automation' });
   }
 });
@@ -142,7 +142,7 @@ router.post('/:name/stop', (req, res) => {
 
     res.json({ status: 'stopped', automation: state });
   } catch (error) {
-    console.error('Stop error:', error);
+    console.error('❌ Stop error:', error);
     res.status(500).json({ error: 'Failed to stop automation' });
   }
 });
@@ -170,7 +170,7 @@ router.post('/:name/settings', (req, res) => {
 
     res.json({ status: 'updated', automation: state });
   } catch (error) {
-    console.error('Settings error:', error);
+    console.error('❌ Settings error:', error);
     res.status(500).json({ error: 'Failed to update settings' });
   }
 });
@@ -198,7 +198,7 @@ router.post('/stop-all', (req, res) => {
 
     res.json({ status: 'all_stopped', stopped });
   } catch (error) {
-    console.error('Stop all error:', error);
+    console.error('❌ Stop all error:', error);
     res.status(500).json({ error: 'Failed to stop all automations' });
   }
 });

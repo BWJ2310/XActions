@@ -1642,7 +1642,7 @@ program
 
       // Keep process alive
       process.on('SIGINT', () => {
-        const { stopMonitor: stop } = require('../analytics/reputation.js');
+        const { stopMonitor: stop } = await import('../analytics/reputation.js');
         stop(monitor.id);
         console.log(chalk.yellow('\n🛑 Monitor stopped.'));
         process.exit(0);

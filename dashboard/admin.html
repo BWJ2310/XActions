@@ -659,6 +659,13 @@
       renderSessions();
     });
 
+    // HTML escape helper to prevent XSS
+    function esc(str) {
+      const div = document.createElement('div');
+      div.textContent = str || '';
+      return div.innerHTML;
+    }
+
     function renderSessions() {
       const container = document.getElementById('sessions-container');
       const sessionList = Array.from(sessions.values());
@@ -683,11 +690,11 @@
             <div class="session-user">
               <div class="user-avatar">👤</div>
               <div class="user-info">
-                <h3>@${session.username || 'Unknown'}</h3>
-                <p>${session.sessionId.slice(0, 20)}...</p>
+                <h3>@${esc(session.username || 'Unknown')}</h3>
+                <p>${esc(session.sessionId.slice(0, 20))}...</p>
               </div>
             </div>
-            <span class="session-status ${session.status}">${session.status}</span>
+            <span class="session-status ${esc(session.status)}">${esc(session.status)}</span>
           </div>
           
           ${session.operation ? `
@@ -698,7 +705,7 @@
                   <div class="progress-fill" style="width: ${session.progress.percent || 0}%"></div>
                 </div>
                 <div class="progress-text">
-                  <span>${session.progress.message || ''}</span>
+                  <span>${esc(session.progress.message || '')}</span>
                   <span>${session.progress.current || 0}/${session.progress.max || '?'}</span>
                 </div>
               ` : ''}

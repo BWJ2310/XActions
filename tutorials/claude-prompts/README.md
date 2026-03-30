@@ -1,6 +1,6 @@
 # XActions Claude Tutorial Prompts
 
-> **22 ready-to-paste prompt files** that turn Claude into your personal X/Twitter automation expert. Each file is a complete, self-contained tutorial covering one feature area of [XActions](https://github.com/nirholas/XActions).
+> **23 ready-to-paste prompt files** that turn Claude into your personal X/Twitter automation expert. Each file is a complete, self-contained tutorial covering one feature area of [XActions](https://github.com/nirholas/XActions).
 
 ## How to Use
 
@@ -69,6 +69,11 @@ Each prompt is designed to:
 | 20 | [Session Logging & Safety](20-session-logging-safety.md) | Track automation activity, manage rate limits, stay safe |
 | 21 | [Workflows & Account Portability](21-workflows-account-portability.md) | Build automated workflows, export account, migrate to Bluesky/Mastodon |
 
+### Spaces & Voice AI
+| # | Tutorial | Description |
+|---|----------|-------------|
+| 23 | [Autonomous Space Agent](23-autonomous-space-agent.md) | Deploy AI voice agents that join, listen, and speak in live X Spaces |
+
 ### Advanced
 | # | Tutorial | Description |
 |---|----------|-------------|
@@ -93,6 +98,9 @@ Each prompt is designed to:
 **"I want to automate everything"**
 → Start with [Tutorial 21](21-workflows-account-portability.md) (Workflows), then [Tutorial 22](22-advanced-power-user-playbook.md) (Power User Playbook)
 
+**"I want to put an AI agent in an X Space"**
+→ Start with [Tutorial 23](23-autonomous-space-agent.md) (Autonomous Space Agent)
+
 **"I want to monitor my brand"**
 → Start with [Tutorial 18](18-grok-ai-sentiment-analysis.md) (Sentiment Analysis) + [Tutorial 14](14-brand-monitoring-business-tools.md) (Brand Monitoring)
 
@@ -103,13 +111,14 @@ Each prompt is designed to:
 
 ## Coverage Map
 
-These 22 tutorials cover **every XActions feature**:
+These 23 tutorials cover **every XActions feature**:
 
-- ✅ **49+ MCP tools** — Covered across tutorials 01-22
+- ✅ **49+ MCP tools** — Covered across tutorials 01-23
 - ✅ **15 browser automation scripts** — Tutorials 03, 07, 16, 19, 20
 - ✅ **12 CLI commands** — Tutorial 15
 - ✅ **5 scraper modules** — Tutorials 04, 17
 - ✅ **40+ standalone scripts** — Tutorials 04, 12, 13, 17
+- ✅ **Autonomous Space Agent** — Tutorial 23
 - ✅ **Workflow engine** — Tutorial 21
 - ✅ **Real-time streaming** — Tutorials 14, 21
 - ✅ **Sentiment analysis** — Tutorial 18

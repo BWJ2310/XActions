@@ -35,7 +35,7 @@ router.post('/like/:tweetId', async (req, res) => {
 
     res.json({ operationId: operation.id, status: 'queued', message: 'Like queued' });
   } catch (error) {
-    console.error('Like error:', error);
+    console.error('❌ Like error:', error);
     res.status(500).json({ error: 'Failed to like tweet' });
   }
 });
@@ -63,7 +63,7 @@ router.delete('/like/:tweetId', async (req, res) => {
 
     res.json({ operationId: operation.id, status: 'queued', message: 'Unlike queued' });
   } catch (error) {
-    console.error('Unlike error:', error);
+    console.error('❌ Unlike error:', error);
     res.status(500).json({ error: 'Failed to unlike tweet' });
   }
 });
@@ -98,7 +98,7 @@ router.post('/reply/:tweetId', async (req, res) => {
 
     res.json({ operationId: operation.id, status: 'queued', message: 'Reply queued' });
   } catch (error) {
-    console.error('Reply error:', error);
+    console.error('❌ Reply error:', error);
     res.status(500).json({ error: 'Failed to reply' });
   }
 });
@@ -126,7 +126,7 @@ router.post('/bookmark/:tweetId', async (req, res) => {
 
     res.json({ operationId: operation.id, status: 'queued', message: 'Bookmark queued' });
   } catch (error) {
-    console.error('Bookmark error:', error);
+    console.error('❌ Bookmark error:', error);
     res.status(500).json({ error: 'Failed to bookmark' });
   }
 });
@@ -162,7 +162,7 @@ router.post('/auto-like', async (req, res) => {
 
     res.json({ operationId: operation.id, status: 'queued', message: 'Auto-like queued' });
   } catch (error) {
-    console.error('Auto-like error:', error);
+    console.error('❌ Auto-like error:', error);
     res.status(500).json({ error: 'Failed to start auto-like' });
   }
 });
@@ -190,7 +190,7 @@ router.get('/analytics', async (req, res) => {
 
     res.json({ operationId: operation.id, status: 'queued', message: 'Analytics fetch queued' });
   } catch (error) {
-    console.error('Analytics error:', error);
+    console.error('❌ Analytics error:', error);
     res.status(500).json({ error: 'Failed to fetch analytics' });
   }
 });

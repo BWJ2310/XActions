@@ -39,7 +39,7 @@ router.post('/send', async (req, res) => {
 
     res.json({ operationId: operation.id, status: 'queued', message: 'DM queued' });
   } catch (error) {
-    console.error('Send DM error:', error);
+    console.error('❌ Send DM error:', error);
     res.status(500).json({ error: 'Failed to send DM' });
   }
 });
@@ -68,7 +68,7 @@ router.get('/conversations', async (req, res) => {
 
     res.json({ operationId: operation.id, status: 'queued', message: 'Conversations fetch queued' });
   } catch (error) {
-    console.error('Conversations error:', error);
+    console.error('❌ Conversations error:', error);
     res.status(500).json({ error: 'Failed to fetch conversations' });
   }
 });
@@ -97,7 +97,7 @@ router.get('/export', async (req, res) => {
 
     res.json({ operationId: operation.id, status: 'queued', message: 'DM export queued' });
   } catch (error) {
-    console.error('Export DMs error:', error);
+    console.error('❌ Export DMs error:', error);
     res.status(500).json({ error: 'Failed to export DMs' });
   }
 });

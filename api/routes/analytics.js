@@ -14,6 +14,7 @@
  */
 
 import express from 'express';
+import { authenticate } from '../middleware/auth.js';
 import {
   analyzeSentiment,
   analyzeBatch,
@@ -29,6 +30,9 @@ import {
 } from '../../src/analytics/index.js';
 
 const router = express.Router();
+
+// Require authentication for all analytics routes
+router.use(authenticate);
 
 // ============================================================================
 // Sentiment Analysis

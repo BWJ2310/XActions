@@ -1,197 +1,492 @@
-// ID Verification — by nichxbt
-// https://github.com/nirholas/XActions
-// Navigate to ID verification page, check status, and guide through the verification flow.
+// src/idVerification.js
+// ID Verification management for X/Twitter
+// by nichxbt
+// https://github.com/nirholas/xactions
 //
-// HOW TO USE:
-// 1. Go to https://x.com
-// 2. Open Developer Console (F12)
-// 3. Edit CONFIG below if needed
-// 4. Paste this script and press Enter
+// Features:
+//   1. Initiate ID verification flow
+//   2. Check verification status (pending, verified, not started, rejected)
+//   3. Manage verification documents
+//
+// Usage:
+//   1. Go to x.com and log in
+//   2. Open Developer Console (F12)
+//   3. Paste this script and press Enter
+//   4. Call any function via window.XActions.idVerification.*
 //
 // Last Updated: 30 March 2026
-
 (() => {
-  'use strict';
-
-  const CONFIG = {
-    autoNavigate: true,              // Navigate to verification settings automatically
-    checkStatus: true,               // Check current verification status
-    showRequirements: true,          // Display verification requirements
-    delayBetweenActions: 2000,       // ms between navigation steps
-  };
-
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-  const STORAGE_KEY = 'xactions_id_verification';
 
-  const SELECTORS = {
-    verificationSettings: 'a[href="/settings/verification"]',
-    verificationStatus: '[data-testid="verificationStatus"]',
-    verifiedIcon: '[data-testid="icon-verified"]',
+  // ============================================================================
+  // Selectors
+  // ============================================================================
+
+  const SEL = {
+    verifiedBadge: '[data-testid="icon-verified"]',
+    backButton: '[data-testid="app-bar-back"]',
+    toast: '[data-testid="toast"]',
+    confirmButton: '[data-testid="confirmationSheetConfirm"]',
     primaryColumn: '[data-testid="primaryColumn"]',
-    settingsNav: '[data-testid="settingsNav"]',
+    userCell: '[data-testid="UserCell"]',
+    settingsLink: 'a[href="/settings"]',
+    accountLink: 'a[href="/settings/account"]',
   };
 
-  const REQUIREMENTS = {
-    'ID Verification': [
-      'Government-issued photo ID (passport, driver\'s license, national ID)',
-      'A selfie matching the ID photo',
-      'Your account must be at least 30 days old',
-      'You must have a profile photo, display name, and confirmed email/phone',
-      'No recent violations of X Rules',
-      'X Premium subscription (Basic, Premium, or Premium+)',
-    ],
-    'Organization Verification': [
-      'Official organization account',
-      'Verified organization identity',
-      'Affiliated accounts management',
-      'Gold checkmark badge',
-      'Requires Verified Organizations subscription',
-    ],
+  // ============================================================================
+  // Helpers
+  // ============================================================================
+
+  const waitForSelector = async (selector, timeout = 8000) => {
+    const start = Date.now();
+    while (Date.now() - start < timeout) {
+      const el = document.querySelector(selector);
+      if (el) return el;
+      await sleep(300);
+    }
+    return null;
   };
 
-  const checkVerificationStatus = () => {
-    console.log('🔍 Checking verification status...');
+  const waitForXPath = async (xpath, timeout = 8000) => {
+    const start = Date.now();
+    while (Date.now() - start < timeout) {
+      const result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+      if (result.singleNodeValue) return result.singleNodeValue;
+      await sleep(300);
+    }
+    return null;
+  };
 
-    const statusEl = document.querySelector(SELECTORS.verificationStatus);
-    const verifiedIcon = document.querySelector(SELECTORS.verifiedIcon);
+  const clickByText = async (text, tag = 'span') => {
+    const xpath = `//${tag}[contains(text(),"${text}")]`;
+    const el = await waitForXPath(xpath);
+    if (el) {
+      el.closest('button, a, div[role="button"], div[role="option"], div[role="menuitem"]')?.click() || el.click();
+      await sleep(1500);
+      return true;
+    }
+    return false;
+  };
 
-    let status = 'unknown';
+  const navigateTo = async (path) => {
+    const currentPath = window.location.pathname;
+    if (currentPath !== path) {
+      window.location.href = `https://x.com${path}`;
+      await sleep(3000);
+    }
+    await sleep(1000);
+  };
 
-    if (statusEl) {
-      const text = statusEl.textContent.trim();
-      console.log(`📋 Verification status: ${text}`);
-      status = text;
+  const findTextOnPage = (text) => {
+    const xpath = `//span[contains(text(),"${text}")] | //div[contains(text(),"${text}")] | //p[contains(text(),"${text}")]`;
+    const result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+    return result.singleNodeValue;
+  };
+
+  // ============================================================================
+  // State Persistence
+  // ============================================================================
+
+  const STATE_KEY = 'xactions_id_verification';
+
+  const getState = () => {
+    try {
+      return JSON.parse(sessionStorage.getItem(STATE_KEY) || '{}');
+    } catch {
+      return {};
+    }
+  };
+
+  const setState = (data) => {
+    const current = getState();
+    sessionStorage.setItem(STATE_KEY, JSON.stringify({ ...current, ...data }));
+  };
+
+  // ============================================================================
+  // 1. Initiate ID Verification
+  // ============================================================================
+
+  /**
+   * Navigate to verification settings and start the ID verification flow.
+   * Guides the user through each step of the process.
+   */
+  const initiateVerification = async () => {
+    console.log('🔄 Starting ID verification flow...');
+
+    // Step 1: Navigate to verification settings
+    console.log('🔄 Navigating to verification settings...');
+    await navigateTo('/settings/account/verification');
+    await sleep(2000);
+
+    // Check if the page loaded correctly
+    const primaryColumn = await waitForSelector(SEL.primaryColumn, 10000);
+    if (!primaryColumn) {
+      console.error('❌ Could not load verification settings. Make sure you are logged in.');
+      return { success: false, error: 'Page did not load' };
     }
 
-    if (verifiedIcon) {
-      console.log('✅ Verified badge detected — you are verified.');
-      status = 'verified';
-    } else {
-      console.log('⚠️ No verified badge detected on this page.');
+    // Check if already verified
+    const alreadyVerified = findTextOnPage('Verified') || findTextOnPage('Your account is verified');
+    if (alreadyVerified) {
+      const badgeEl = document.querySelector(SEL.verifiedBadge);
+      if (badgeEl) {
+        console.log('✅ Your account is already verified!');
+        setState({ status: 'verified', lastChecked: new Date().toISOString() });
+        return { success: true, status: 'verified', message: 'Account is already verified' };
+      }
     }
 
-    const pageText = document.body.innerText;
-    if (pageText.includes('ID verification complete') || pageText.includes('Verification confirmed')) {
-      console.log('✅ ID verification appears to be complete.');
-      status = 'complete';
-    } else if (pageText.includes('Pending review') || pageText.includes('Under review')) {
-      console.log('🔄 Your ID verification is pending review.');
-      status = 'pending';
-    } else if (pageText.includes('Verification denied') || pageText.includes('Not verified')) {
-      console.log('❌ Verification was denied or not yet submitted.');
-      status = 'denied';
+    // Step 2: Look for the ID verification option
+    console.log('🔄 Looking for ID verification option...');
+    await sleep(1000);
+
+    // Try to find and click the ID verification link/button
+    const idVerifClicked =
+      await clickByText('ID verification') ||
+      await clickByText('Verify your identity') ||
+      await clickByText('Government ID') ||
+      await clickByText('Verify your account');
+
+    if (!idVerifClicked) {
+      // Try looking for a "Get verified" or "Subscribe" flow
+      const getVerified = await clickByText('Get verified') || await clickByText('Verification');
+      if (!getVerified) {
+        console.warn('⚠️ Could not find ID verification option on this page.');
+        console.log('📋 Manual steps:');
+        console.log('   1. Go to Settings > Account > Verification');
+        console.log('   2. Look for "ID verification" or "Verify your identity"');
+        console.log('   3. Follow the prompts to upload your government-issued ID');
+        return { success: false, error: 'ID verification option not found', manual: true };
+      }
     }
 
-    const record = {
-      status,
-      checkedAt: new Date().toISOString(),
-      url: window.location.href,
+    await sleep(2000);
+
+    // Step 3: Check what verification step we landed on
+    console.log('🔄 Checking verification flow state...');
+
+    const hasUploadPrompt = findTextOnPage('Upload') || findTextOnPage('upload');
+    const hasPhotoPrompt = findTextOnPage('photo') || findTextOnPage('Photo') || findTextOnPage('selfie');
+    const hasPending = findTextOnPage('pending') || findTextOnPage('Pending') || findTextOnPage('review');
+
+    if (hasPending) {
+      console.log('🔄 Your ID verification is currently pending review.');
+      setState({ status: 'pending', lastChecked: new Date().toISOString() });
+      return { success: true, status: 'pending', message: 'Verification is pending review' };
+    }
+
+    if (hasUploadPrompt || hasPhotoPrompt) {
+      console.log('✅ ID verification flow is ready. Follow the on-screen prompts:');
+      console.log('');
+      console.log('📋 Steps to complete:');
+      console.log('   1. Select your ID type (passport, driver\'s license, national ID)');
+      console.log('   2. Upload clear photos of the front (and back if applicable)');
+      console.log('   3. Take a selfie for facial matching');
+      console.log('   4. Confirm your details and submit');
+      console.log('');
+      console.log('⚠️ Tips for success:');
+      console.log('   - Ensure good lighting and clear, readable text on your ID');
+      console.log('   - Remove glasses and hats for the selfie');
+      console.log('   - Make sure the entire ID is visible with no glare');
+      console.log('   - Use the same name on your ID as on your X profile');
+
+      setState({ status: 'in_progress', startedAt: new Date().toISOString() });
+      return { success: true, status: 'in_progress', message: 'Verification flow is active' };
+    }
+
+    // Generic guidance
+    console.log('✅ Verification settings page loaded.');
+    console.log('📋 Follow the on-screen instructions to complete ID verification.');
+    setState({ status: 'initiated', lastChecked: new Date().toISOString() });
+    return { success: true, status: 'initiated', message: 'Navigated to verification settings' };
+  };
+
+  // ============================================================================
+  // 2. Check Verification Status
+  // ============================================================================
+
+  /**
+   * Check the current verification status of your account.
+   * Scrapes the verification badge and status from settings.
+   * @returns {Object} Status object with status field: 'verified', 'pending', 'rejected', 'not_started'
+   */
+  const checkStatus = async () => {
+    console.log('🔄 Checking verification status...');
+
+    const statusResult = {
+      status: 'not_started',
+      badge: null,
+      details: null,
+      lastChecked: new Date().toISOString(),
     };
 
-    try {
-      const history = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || '[]');
-      history.push(record);
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(history));
-    } catch (e) {
-      // Silent fail on storage
+    // Check 1: Look for verification badge on current page
+    const badgeEl = document.querySelector(SEL.verifiedBadge);
+    if (badgeEl) {
+      const svgEl = badgeEl.querySelector('svg') || badgeEl;
+      const badgeColor = svgEl.getAttribute('fill') ||
+        window.getComputedStyle(svgEl).color;
+
+      let badgeType = 'blue';
+      if (badgeColor && (badgeColor.includes('gold') || badgeColor.includes('#F4D03F') || badgeColor.includes('rgb(244'))) {
+        badgeType = 'gold';
+      } else if (badgeColor && (badgeColor.includes('gray') || badgeColor.includes('grey') || badgeColor.includes('rgb(113'))) {
+        badgeType = 'gray';
+      }
+
+      statusResult.badge = badgeType;
+      console.log(`✅ Verification badge found: ${badgeType} checkmark`);
     }
 
-    return status;
-  };
+    // Check 2: Navigate to verification settings for detailed status
+    console.log('🔄 Navigating to verification settings...');
+    await navigateTo('/settings/account/verification');
+    await sleep(2000);
 
-  const showRequirements = () => {
-    console.log('\n══════════════════════════════════════════════════');
-    console.log('📋 ID VERIFICATION REQUIREMENTS');
-    console.log('══════════════════════════════════════════════════\n');
-
-    for (const [category, reqs] of Object.entries(REQUIREMENTS)) {
-      console.log(`\n🏷️  ${category}`);
-      console.log('─'.repeat(40));
-      reqs.forEach(r => console.log(`   ✓ ${r}`));
+    const primaryColumn = await waitForSelector(SEL.primaryColumn, 10000);
+    if (!primaryColumn) {
+      console.error('❌ Could not load verification settings page.');
+      statusResult.details = 'Could not load settings page';
+      setState(statusResult);
+      return statusResult;
     }
 
-    console.log('\n══════════════════════════════════════════════════');
-    console.log('💡 Tips:');
-    console.log('   • Ensure your ID is not expired');
-    console.log('   • Take the selfie in good lighting');
-    console.log('   • Make sure all text on the ID is legible');
-    console.log('   • Processing usually takes 24-72 hours');
-    console.log('══════════════════════════════════════════════════\n');
-  };
+    // Scan for status indicators
+    const pageText = primaryColumn.textContent || '';
 
-  const navigateToVerification = async () => {
-    console.log('🚀 Navigating to ID verification settings...');
+    if (/verified/i.test(pageText) && (/your account is verified/i.test(pageText) || /identity verified/i.test(pageText))) {
+      statusResult.status = 'verified';
+      statusResult.details = 'Account identity is verified';
+      console.log('✅ Status: VERIFIED — Your identity has been confirmed.');
+    } else if (/pending|under review|processing|submitted/i.test(pageText)) {
+      statusResult.status = 'pending';
+      statusResult.details = 'Verification is under review';
+      console.log('🔄 Status: PENDING — Your verification is under review.');
 
-    const verificationLink = document.querySelector(SELECTORS.verificationSettings);
+      // Try to extract estimated time
+      const timeMatch = pageText.match(/(\d+)\s*(hour|day|business day)/i);
+      if (timeMatch) {
+        statusResult.estimatedTime = `${timeMatch[1]} ${timeMatch[2]}(s)`;
+        console.log(`   ⏳ Estimated processing time: ${statusResult.estimatedTime}`);
+      }
+    } else if (/rejected|denied|failed|unsuccessful/i.test(pageText)) {
+      statusResult.status = 'rejected';
+      statusResult.details = 'Verification was rejected';
+      console.log('❌ Status: REJECTED — Your verification was not approved.');
 
-    if (verificationLink) {
-      verificationLink.click();
-      console.log('✅ Clicked verification settings link.');
-      await sleep(CONFIG.delayBetweenActions);
+      // Try to find reason
+      const reasonEl = findTextOnPage('reason') || findTextOnPage('Reason') || findTextOnPage('because');
+      if (reasonEl) {
+        const reasonText = reasonEl.closest('div, p')?.textContent?.trim();
+        if (reasonText) {
+          statusResult.rejectionReason = reasonText;
+          console.log(`   📋 Reason: ${reasonText}`);
+        }
+      }
+
+      console.log('');
+      console.log('⚠️ You may be able to resubmit. Common rejection reasons:');
+      console.log('   - ID photo was blurry or unreadable');
+      console.log('   - Selfie did not match ID photo');
+      console.log('   - Name on ID did not match profile name');
+      console.log('   - Expired identification document');
     } else {
-      console.log('⚠️ Verification link not found in current page. Navigating directly...');
-      window.location.href = 'https://x.com/settings/verification';
-      await sleep(CONFIG.delayBetweenActions * 2);
+      statusResult.status = 'not_started';
+      statusResult.details = 'ID verification has not been started';
+      console.log('⚠️ Status: NOT STARTED — ID verification has not been initiated.');
+      console.log('   Run initiateVerification() to begin the process.');
     }
 
-    await sleep(CONFIG.delayBetweenActions);
-
-    const primaryColumn = document.querySelector(SELECTORS.primaryColumn);
-    if (primaryColumn) {
-      const text = primaryColumn.textContent;
-      if (text.includes('Verification') || text.includes('Identity')) {
-        console.log('✅ Verification page loaded successfully.');
+    // Check for premium/subscription status on page
+    if (/premium|subscribe|X Premium/i.test(pageText)) {
+      const hasPremium = /active|subscribed|current plan/i.test(pageText);
+      statusResult.premiumStatus = hasPremium ? 'active' : 'not_subscribed';
+      if (hasPremium) {
+        console.log('   💎 X Premium: Active');
       } else {
-        console.log('ℹ️ Page loaded, but verification content may still be loading.');
-      }
-
-      const buttons = primaryColumn.querySelectorAll('button, a[role="button"]');
-      if (buttons.length > 0) {
-        console.log('📋 Available actions on this page:');
-        buttons.forEach((btn, i) => {
-          const label = btn.textContent.trim() || btn.getAttribute('aria-label') || 'Unnamed button';
-          console.log(`   ${i + 1}. ${label}`);
-        });
+        console.log('   💎 X Premium: Not subscribed (may be required for some verification features)');
       }
     }
+
+    console.log('');
+    console.log(`📊 Summary: ${statusResult.status.toUpperCase()} | Badge: ${statusResult.badge || 'none'}`);
+
+    setState(statusResult);
+    return statusResult;
   };
 
-  const run = async () => {
-    console.log('═══════════════════════════════════════════');
-    console.log('🪪 XActions — ID Verification');
-    console.log('═══════════════════════════════════════════\n');
+  // ============================================================================
+  // 3. Manage Verification Documents
+  // ============================================================================
 
-    if (CONFIG.showRequirements) {
-      showRequirements();
-      await sleep(1000);
+  /**
+   * Navigate to verification document management and view submitted documents status.
+   * Shows document types, submission dates, and current review status.
+   */
+  const manageDocuments = async () => {
+    console.log('🔄 Navigating to verification document management...');
+
+    // Navigate to the verification settings area
+    await navigateTo('/settings/account/verification');
+    await sleep(2000);
+
+    const primaryColumn = await waitForSelector(SEL.primaryColumn, 10000);
+    if (!primaryColumn) {
+      console.error('❌ Could not load verification settings. Make sure you are logged in.');
+      return { success: false, error: 'Page did not load' };
     }
 
-    if (CONFIG.checkStatus) {
-      const status = checkVerificationStatus();
-      await sleep(1000);
+    // Try to find a documents section or link
+    console.log('🔄 Looking for document management section...');
+    await sleep(1000);
 
-      if (status === 'complete' || status === 'verified') {
-        console.log('\n🎉 You are already verified! No further action needed.');
-        console.log('💡 To manage verification: https://x.com/settings/verification');
-        return;
-      }
+    const docClicked =
+      await clickByText('Documents') ||
+      await clickByText('Manage documents') ||
+      await clickByText('Submitted documents') ||
+      await clickByText('Your documents') ||
+      await clickByText('ID documents');
 
-      if (status === 'pending') {
-        console.log('\n🔄 Your verification is under review. Please wait for X to process it.');
-        return;
+    await sleep(2000);
+
+    const documents = [];
+    const pageText = (primaryColumn.textContent || '').toLowerCase();
+
+    // Scan for document entries in the page
+    const docTypes = ['passport', 'driver', 'license', 'national id', 'government id', 'photo id', 'identity card'];
+    const statusKeywords = {
+      approved: ['approved', 'accepted', 'verified', 'valid'],
+      pending: ['pending', 'review', 'processing', 'submitted'],
+      rejected: ['rejected', 'denied', 'failed', 'expired', 'invalid'],
+    };
+
+    for (const docType of docTypes) {
+      if (pageText.includes(docType)) {
+        const doc = {
+          type: docType,
+          status: 'unknown',
+        };
+
+        // Try to determine document status from surrounding context
+        const docEl = findTextOnPage(docType.charAt(0).toUpperCase() + docType.slice(1)) ||
+          findTextOnPage(docType);
+        if (docEl) {
+          const container = docEl.closest('div[class], section, li') || docEl.parentElement;
+          const containerText = (container?.textContent || '').toLowerCase();
+
+          for (const [status, keywords] of Object.entries(statusKeywords)) {
+            if (keywords.some(kw => containerText.includes(kw))) {
+              doc.status = status;
+              break;
+            }
+          }
+
+          // Try to extract date
+          const dateMatch = containerText.match(/(\w+ \d{1,2},? \d{4}|\d{1,2}\/\d{1,2}\/\d{4}|\d{4}-\d{2}-\d{2})/);
+          if (dateMatch) {
+            doc.submittedDate = dateMatch[1];
+          }
+        }
+
+        documents.push(doc);
       }
     }
 
-    if (CONFIG.autoNavigate) {
-      await navigateToVerification();
+    if (documents.length > 0) {
+      console.log('');
+      console.log('📄 Submitted Documents:');
+      console.log('─'.repeat(50));
+      documents.forEach((doc, i) => {
+        const statusIcon = doc.status === 'approved' ? '✅' :
+          doc.status === 'pending' ? '🔄' :
+          doc.status === 'rejected' ? '❌' : '❔';
+        console.log(`   ${i + 1}. ${statusIcon} ${doc.type.toUpperCase()}`);
+        console.log(`      Status: ${doc.status}`);
+        if (doc.submittedDate) {
+          console.log(`      Submitted: ${doc.submittedDate}`);
+        }
+      });
+      console.log('─'.repeat(50));
     } else {
-      console.log('\n💡 Set CONFIG.autoNavigate = true to auto-navigate, or visit:');
-      console.log('   👉 https://x.com/settings/verification');
+      console.log('⚠️ No submitted documents found on this page.');
+      console.log('');
+      console.log('📋 This could mean:');
+      console.log('   - You have not submitted any documents yet');
+      console.log('   - Documents are managed in a different section');
+      console.log('   - The page structure has changed');
     }
 
-    console.log('\n✅ Follow the on-screen prompts to complete ID verification.');
-    console.log('📱 You will need your government-issued ID and a selfie.');
+    // Check for resubmission option
+    const canResubmit = findTextOnPage('Resubmit') || findTextOnPage('Try again') ||
+      findTextOnPage('Upload again') || findTextOnPage('Submit new');
+    if (canResubmit) {
+      console.log('');
+      console.log('🔄 Resubmission option is available.');
+      console.log('   Run initiateVerification() to start a new submission.');
+    }
+
+    // Check for document requirements
+    const hasRequirements = findTextOnPage('Requirements') || findTextOnPage('Accepted documents') ||
+      findTextOnPage('accepted');
+    if (hasRequirements) {
+      console.log('');
+      console.log('📋 Accepted document types:');
+      console.log('   - Passport');
+      console.log('   - Driver\'s license');
+      console.log('   - National identity card');
+      console.log('   - Government-issued photo ID');
+    }
+
+    if (!docClicked && documents.length === 0) {
+      console.log('');
+      console.log('📋 To manage verification documents:');
+      console.log('   1. Navigate to Settings > Account > Verification');
+      console.log('   2. Look for "ID verification" or "Documents" section');
+      console.log('   3. You can view, resubmit, or update your documents there');
+    }
+
+    const result = {
+      success: true,
+      documents,
+      canResubmit: !!canResubmit,
+      timestamp: new Date().toISOString(),
+    };
+
+    setState({ documents: result });
+    return result;
   };
 
-  run();
+  // ============================================================================
+  // Expose on window.XActions.idVerification
+  // ============================================================================
+
+  window.XActions = window.XActions || {};
+  window.XActions.idVerification = {
+    initiateVerification,
+    checkStatus,
+    manageDocuments,
+  };
+
+  // ============================================================================
+  // Menu
+  // ============================================================================
+
+  console.log('');
+  console.log('╔══════════════════════════════════════════════════════╗');
+  console.log('║       🆔 XActions ID Verification Manager           ║');
+  console.log('║                  by nichxbt                         ║');
+  console.log('╠══════════════════════════════════════════════════════╣');
+  console.log('║                                                      ║');
+  console.log('║  1. initiateVerification()                          ║');
+  console.log('║     → Start the ID verification flow                ║');
+  console.log('║                                                      ║');
+  console.log('║  2. checkStatus()                                   ║');
+  console.log('║     → Check verification status & badge type        ║');
+  console.log('║                                                      ║');
+  console.log('║  3. manageDocuments()                               ║');
+  console.log('║     → View submitted documents & their status       ║');
+  console.log('║                                                      ║');
+  console.log('║  Access: window.XActions.idVerification.<function>  ║');
+  console.log('╚══════════════════════════════════════════════════════╝');
+  console.log('');
 })();

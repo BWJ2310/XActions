@@ -78,7 +78,7 @@
       min-height: 100vh;
     }
     .layout { display: flex; max-width: 1300px; margin: 0 auto; min-height: 100vh; }
-    .sidebar-left { width: 275px; padding: 0 12px; position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; border-right: 1px solid var(--border); }
+    .sidebar { width: 275px; padding: 0 12px; position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; border-right: 1px solid var(--border); }
     .logo { padding: 12px; }
     .logo a { display: flex; align-items: center; gap: 8px; text-decoration: none; color: var(--text-primary); font-size: 1.5rem; font-weight: 800; padding: 12px; border-radius: 9999px; transition: background .2s; }
     .logo a:hover { background: var(--accent-light); }
@@ -137,7 +137,7 @@
     @media (max-width: 1024px) { .sidebar-right { display: none; } }
     @media (max-width: 768px) {
       .layout { flex-direction: column; }
-      .sidebar-left { display: none; }
+      .sidebar { display: none; }
       .main-content { max-width: 100%; border-right: none; }
       .article pre { font-size: 0.75rem; }
       .footer-content { grid-template-columns: 1fr 1fr; }
@@ -146,7 +146,19 @@
 </head>
 <body>
   <div class="layout">
-    <aside class="sidebar-left"></aside>
+    <aside class="sidebar">
+      <div class="logo"><a href="/">⚡ XActions</a></div>
+      <nav>
+        <a href="/features" class="nav-item"><span class="nav-icon">⚡</span><span>All Scripts</span></a>
+        <a href="/tutorials" class="nav-item"><span class="nav-icon">📚</span><span>Tutorials</span></a>
+        <a href="/docs" class="nav-item active"><span class="nav-icon">📖</span><span>Documentation</span></a>
+        <a href="/ai" class="nav-item"><span class="nav-icon">🤖</span><span>AI/MCP</span></a>
+        <a href="/pricing" class="nav-item"><span class="nav-icon">💰</span><span>Pricing</span></a>
+        <a href="/about" class="nav-item"><span class="nav-icon">ℹ️</span><span>About</span></a>
+        <a href="https://github.com/nirholas/XActions" class="nav-item" target="_blank" rel="noopener"><span class="nav-icon">⭐</span><span>GitHub</span></a>
+      </nav>
+      <a href="/dashboard" class="action-btn">Open Dashboard</a>
+    </aside>
 
     <main class="main-content">
       <header class="main-header">
@@ -1277,6 +1289,1257 @@ $ xactions persona edit persona_123 --target-accounts &quot;elonmusk,sama,karpat
 ✅ Persona persona_1234567890 deleted
 </code></pre>
 <hr>
+<h2>Agent Commands</h2>
+<h3>xactions agent setup</h3>
+<p>Interactive 8-step setup wizard for first-time agent configuration.</p>
+<pre><code class="language-bash">xactions agent setup
+</code></pre>
+<p>Walks through niche selection, persona creation, LLM provider setup, timezone, intensity level, browser login, test run, and saves config to <code>data/agent-config.json</code>.</p>
+<h3>xactions agent start</h3>
+<p>Start the autonomous thought leader agent.</p>
+<pre><code class="language-bash">xactions agent start [options]
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>-c, --config &lt;path&gt;</code></td>
+<td>Path to agent config file</td>
+<td><code>data/agent-config.json</code></td>
+</tr>
+</tbody></table>
+<p><strong>Example:</strong></p>
+<pre><code class="language-bash">xactions agent start --config data/agent-config.json
+</code></pre>
+<h3>xactions agent test</h3>
+<p>Run the agent for 5 minutes in test mode.</p>
+<pre><code class="language-bash">xactions agent test [options]
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>-c, --config &lt;path&gt;</code></td>
+<td>Path to agent config file</td>
+<td><code>data/agent-config.json</code></td>
+</tr>
+</tbody></table>
+<h3>xactions agent login</h3>
+<p>Open a visible browser for manual X.com login. Saves session cookies for headless runs.</p>
+<pre><code class="language-bash">xactions agent login
+</code></pre>
+<h3>xactions agent status</h3>
+<p>Show current agent status and today&#39;s action counts.</p>
+<pre><code class="language-bash">xactions agent status [options]
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>-c, --config &lt;path&gt;</code></td>
+<td>Path to agent config file</td>
+<td><code>data/agent-config.json</code></td>
+</tr>
+</tbody></table>
+<p><strong>Example output:</strong></p>
+<pre><code>📊 Agent Status — Today
+  Likes:      47 / 150
+  Follows:    12 / 80
+  Comments:   8  / 25
+  Posts:       2  / 5
+  LLM cost:   $0.34
+</code></pre>
+<h3>xactions agent report</h3>
+<p>Generate a growth report for the last N days.</p>
+<pre><code class="language-bash">xactions agent report [options]
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>-d, --days &lt;n&gt;</code></td>
+<td>Number of days to report on</td>
+<td><code>7</code></td>
+</tr>
+</tbody></table>
+<hr>
+<h2>Plugin Commands</h2>
+<h3>xactions plugin install</h3>
+<p>Install a plugin from npm or a local path.</p>
+<pre><code class="language-bash">xactions plugin install &lt;name&gt;
+</code></pre>
+<p><strong>Example:</strong></p>
+<pre><code class="language-bash">$ xactions plugin install xactions-plugin-sentiment
+✅ Installed xactions-plugin-sentiment@1.2.0
+   Tools: 3 | Scrapers: 1 | Routes: 2 | Actions: 1
+</code></pre>
+<h3>xactions plugin remove</h3>
+<p>Remove an installed plugin.</p>
+<pre><code class="language-bash">xactions plugin remove &lt;name&gt;
+</code></pre>
+<h3>xactions plugin list</h3>
+<p>List all installed plugins with status.</p>
+<pre><code class="language-bash">$ xactions plugin list
+ ✅ xactions-plugin-sentiment  v1.2.0  Sentiment analysis tools
+ ⏸  xactions-plugin-analytics  v0.9.1  Advanced analytics (disabled)
+</code></pre>
+<h3>xactions plugin enable / disable</h3>
+<p>Enable or disable a plugin without removing it.</p>
+<pre><code class="language-bash">xactions plugin enable &lt;name&gt;
+xactions plugin disable &lt;name&gt;
+</code></pre>
+<h3>xactions plugin discover</h3>
+<p>Scan <code>node_modules</code> for <code>xactions-plugin-*</code> packages.</p>
+<pre><code class="language-bash">xactions plugin discover
+</code></pre>
+<hr>
+<h2>Stream Commands</h2>
+<h3>xactions stream start</h3>
+<p>Start a real-time stream for an account.</p>
+<pre><code class="language-bash">xactions stream start &lt;type&gt; &lt;username&gt; [options]
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>-i, --interval &lt;seconds&gt;</code></td>
+<td>Poll interval</td>
+<td><code>60</code></td>
+</tr>
+</tbody></table>
+<p><strong>Types:</strong> <code>tweet</code>, <code>follower</code>, <code>mention</code></p>
+<p><strong>Example:</strong></p>
+<pre><code class="language-bash">$ xactions stream start tweet nichxbt -i 30
+🔴 Stream started: stream_abc123
+   Type: tweet | User: nichxbt | Interval: 30s
+</code></pre>
+<h3>xactions stream stop</h3>
+<p>Stop an active stream.</p>
+<pre><code class="language-bash">xactions stream stop &lt;streamId&gt;
+</code></pre>
+<h3>xactions stream list</h3>
+<p>List all active streams and browser pool status.</p>
+<pre><code class="language-bash">$ xactions stream list
+Active Streams:
+  stream_abc123  tweet     nichxbt   ✅ running  polls:142  errors:0
+  stream_def456  follower  nichxbt   ⏸  paused   polls:89   errors:1
+
+Browser Pool: 2/5 active
+</code></pre>
+<h3>xactions stream history</h3>
+<p>Show recent events for a stream.</p>
+<pre><code class="language-bash">xactions stream history &lt;streamId&gt; [options]
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>-l, --limit &lt;n&gt;</code></td>
+<td>Number of events</td>
+<td><code>20</code></td>
+</tr>
+<tr>
+<td><code>-t, --type &lt;eventType&gt;</code></td>
+<td>Filter by event type</td>
+<td>all</td>
+</tr>
+</tbody></table>
+<h3>xactions stream pause / resume</h3>
+<p>Pause or resume a stream without losing state.</p>
+<pre><code class="language-bash">xactions stream pause &lt;streamId&gt;
+xactions stream resume &lt;streamId&gt;
+</code></pre>
+<h3>xactions stream status</h3>
+<p>Get detailed status of a specific stream.</p>
+<pre><code class="language-bash">xactions stream status &lt;streamId&gt;
+</code></pre>
+<h3>xactions stream stop-all</h3>
+<p>Stop all active streams.</p>
+<pre><code class="language-bash">xactions stream stop-all
+</code></pre>
+<hr>
+<h2>Workflow Commands</h2>
+<h3>xactions workflow create</h3>
+<p>Create a workflow from a JSON file or interactively.</p>
+<pre><code class="language-bash">xactions workflow create [options]
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>-f, --file &lt;path&gt;</code></td>
+<td>Load workflow from JSON file</td>
+<td>interactive</td>
+</tr>
+</tbody></table>
+<p><strong>Interactive mode</strong> prompts for: name, description, trigger type (manual/schedule/webhook), cron expression.</p>
+<h3>xactions workflow run</h3>
+<p>Run a workflow by name or ID.</p>
+<pre><code class="language-bash">xactions workflow run &lt;name&gt; [options]
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>--auth &lt;token&gt;</code></td>
+<td>Auth token for browser actions</td>
+<td>from config</td>
+</tr>
+</tbody></table>
+<h3>xactions workflow list</h3>
+<p>List all saved workflows.</p>
+<pre><code class="language-bash">$ xactions workflow list
+ ✅ morning-engage  wf_001  schedule (0 9 * * *)  5 steps  Morning engagement routine
+ ✅ weekly-report   wf_002  manual                 3 steps  Generate weekly analytics
+</code></pre>
+<h3>xactions workflow delete</h3>
+<p>Delete a workflow.</p>
+<pre><code class="language-bash">xactions workflow delete &lt;id&gt;
+</code></pre>
+<h3>xactions workflow actions</h3>
+<p>List all available workflow actions grouped by category.</p>
+<pre><code class="language-bash">xactions workflow actions
+</code></pre>
+<h3>xactions workflow runs</h3>
+<p>Show execution history for a workflow.</p>
+<pre><code class="language-bash">xactions workflow runs &lt;workflowId&gt; [options]
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>-l, --limit &lt;n&gt;</code></td>
+<td>Number of runs to show</td>
+<td><code>10</code></td>
+</tr>
+</tbody></table>
+<hr>
+<h2>Graph Commands</h2>
+<h3>xactions graph build</h3>
+<p>Build a social graph by crawling an account&#39;s network.</p>
+<pre><code class="language-bash">xactions graph build &lt;username&gt; [options]
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>-d, --depth &lt;n&gt;</code></td>
+<td>Crawl depth</td>
+<td><code>2</code></td>
+</tr>
+<tr>
+<td><code>-n, --max-nodes &lt;n&gt;</code></td>
+<td>Maximum nodes to collect</td>
+<td><code>500</code></td>
+</tr>
+<tr>
+<td><code>--auth &lt;token&gt;</code></td>
+<td>Auth token</td>
+<td>from config</td>
+</tr>
+</tbody></table>
+<p><strong>Example:</strong></p>
+<pre><code class="language-bash">$ xactions graph build nichxbt -d 2 -n 200
+🕸️ Building graph for nichxbt...
+   Depth: 2 | Max nodes: 200
+   ████████████████████ 100%
+✅ Graph saved: graph_abc123 (187 nodes, 2,341 edges)
+</code></pre>
+<h3>xactions graph analyze</h3>
+<p>Run cluster, influence, and bridge analysis on a graph.</p>
+<pre><code class="language-bash">xactions graph analyze &lt;graphId&gt;
+</code></pre>
+<p><strong>Output:</strong> Clusters, top influencers, bridge accounts, orbit analysis.</p>
+<h3>xactions graph recommend</h3>
+<p>Get follow/engage/unfollow recommendations from a graph.</p>
+<pre><code class="language-bash">xactions graph recommend &lt;graphId&gt;
+</code></pre>
+<p><strong>Output:</strong> Suggested follows, engagement targets, watch list, safe-to-unfollow.</p>
+<h3>xactions graph export</h3>
+<p>Export a graph for visualization.</p>
+<pre><code class="language-bash">xactions graph export &lt;graphId&gt; [options]
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>-f, --format &lt;format&gt;</code></td>
+<td>Output format: html, gexf, d3</td>
+<td><code>html</code></td>
+</tr>
+<tr>
+<td><code>-o, --output &lt;path&gt;</code></td>
+<td>Output file path</td>
+<td>auto</td>
+</tr>
+</tbody></table>
+<h3>xactions graph list</h3>
+<p>List all saved graphs.</p>
+<pre><code class="language-bash">xactions graph list
+</code></pre>
+<h3>xactions graph delete</h3>
+<p>Delete a saved graph.</p>
+<pre><code class="language-bash">xactions graph delete &lt;graphId&gt;
+</code></pre>
+<hr>
+<h2>Portability Commands</h2>
+<h3>xactions export</h3>
+<p>Export a full Twitter account (profile, tweets, followers, following, bookmarks).</p>
+<pre><code class="language-bash">xactions export &lt;username&gt; [options]
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>-f, --format &lt;formats&gt;</code></td>
+<td>Comma-separated: json,csv,xlsx,md,html</td>
+<td><code>json,csv,md,html</code></td>
+</tr>
+<tr>
+<td><code>--only &lt;phases&gt;</code></td>
+<td>Limit to: profile,tweets,followers,following,bookmarks,likes</td>
+<td>all</td>
+</tr>
+<tr>
+<td><code>-l, --limit &lt;n&gt;</code></td>
+<td>Items per phase</td>
+<td><code>500</code></td>
+</tr>
+<tr>
+<td><code>-o, --output &lt;dir&gt;</code></td>
+<td>Output directory</td>
+<td><code>exports/&lt;username&gt;</code></td>
+</tr>
+</tbody></table>
+<p><strong>Example:</strong></p>
+<pre><code class="language-bash">xactions export nichxbt -f json,csv --only profile,tweets -l 1000
+</code></pre>
+<h3>xactions migrate</h3>
+<p>Migrate Twitter data to Bluesky or Mastodon.</p>
+<pre><code class="language-bash">xactions migrate &lt;username&gt; [options]
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>--to &lt;platform&gt;</code></td>
+<td>Target: bluesky or mastodon</td>
+<td><strong>required</strong></td>
+</tr>
+<tr>
+<td><code>--dry-run</code></td>
+<td>Preview without executing</td>
+<td><code>true</code></td>
+</tr>
+<tr>
+<td><code>--execute</code></td>
+<td>Actually perform migration</td>
+<td><code>false</code></td>
+</tr>
+<tr>
+<td><code>--export-dir &lt;dir&gt;</code></td>
+<td>Use existing export data</td>
+<td>auto</td>
+</tr>
+<tr>
+<td><code>-l, --limit &lt;n&gt;</code></td>
+<td>Items to migrate</td>
+<td><code>50</code></td>
+</tr>
+</tbody></table>
+<h3>xactions diff</h3>
+<p>Compare two account exports and show changes.</p>
+<pre><code class="language-bash">xactions diff &lt;dirA&gt; &lt;dirB&gt; [options]
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>-o, --output &lt;dir&gt;</code></td>
+<td>Save diff report</td>
+<td>stdout</td>
+</tr>
+</tbody></table>
+<p><strong>Output:</strong> Follower/following deltas, tweet count changes, engagement trends, profile diffs.</p>
+<hr>
+<h2>Cross-Platform Scraping</h2>
+<h3>xactions scrape</h3>
+<p>Multi-platform scraping for Twitter, Bluesky, Mastodon, and Threads.</p>
+<pre><code class="language-bash">xactions scrape &lt;action&gt; [target] [options]
+</code></pre>
+<p><strong>Actions:</strong> <code>profile</code>, <code>followers</code>, <code>following</code>, <code>tweets</code>, <code>search</code>, <code>hashtag</code>, <code>trending</code></p>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>-p, --platform &lt;platform&gt;</code></td>
+<td>twitter, bluesky, mastodon, threads</td>
+<td><code>twitter</code></td>
+</tr>
+<tr>
+<td><code>-u, --username &lt;username&gt;</code></td>
+<td>Target username</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>-q, --query &lt;query&gt;</code></td>
+<td>Search query</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>-l, --limit &lt;n&gt;</code></td>
+<td>Max items</td>
+<td><code>100</code></td>
+</tr>
+<tr>
+<td><code>-i, --instance &lt;url&gt;</code></td>
+<td>Mastodon instance URL</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>-o, --output &lt;file&gt;</code></td>
+<td>Output file</td>
+<td>stdout</td>
+</tr>
+<tr>
+<td><code>-j, --json</code></td>
+<td>Force JSON output</td>
+<td><code>false</code></td>
+</tr>
+</tbody></table>
+<p><strong>Examples:</strong></p>
+<pre><code class="language-bash">xactions scrape profile -p bluesky -u nichxbt.bsky.social
+xactions scrape followers -p mastodon -u user -i https://mastodon.social -l 500
+xactions scrape trending -p twitter
+</code></pre>
+<h3>xactions platforms</h3>
+<p>List supported social media platforms.</p>
+<pre><code class="language-bash">xactions platforms
+</code></pre>
+<hr>
+<h2>AI Writer Commands</h2>
+<h3>xactions ai analyze</h3>
+<p>Analyze a user&#39;s writing voice from their tweets.</p>
+<pre><code class="language-bash">xactions ai analyze &lt;username&gt; [options]
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>-l, --limit &lt;n&gt;</code></td>
+<td>Tweets to analyze</td>
+<td><code>100</code></td>
+</tr>
+<tr>
+<td><code>-o, --output &lt;file&gt;</code></td>
+<td>Save voice profile</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>--json</code></td>
+<td>JSON output</td>
+<td><code>false</code></td>
+</tr>
+</tbody></table>
+<h3>xactions ai generate</h3>
+<p>Generate tweets or threads in a user&#39;s voice.</p>
+<pre><code class="language-bash">xactions ai generate &lt;topic&gt; [options]
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>-v, --voice &lt;username&gt;</code></td>
+<td>Voice to mimic</td>
+<td><strong>required</strong></td>
+</tr>
+<tr>
+<td><code>-c, --count &lt;n&gt;</code></td>
+<td>Number of variations</td>
+<td><code>3</code></td>
+</tr>
+<tr>
+<td><code>-s, --style &lt;style&gt;</code></td>
+<td>casual, professional, provocative</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>-t, --type &lt;type&gt;</code></td>
+<td>tweet or thread</td>
+<td><code>tweet</code></td>
+</tr>
+<tr>
+<td><code>-m, --model &lt;model&gt;</code></td>
+<td>LLM model</td>
+<td>auto</td>
+</tr>
+<tr>
+<td><code>-k, --api-key &lt;key&gt;</code></td>
+<td>OpenRouter API key</td>
+<td>from env</td>
+</tr>
+</tbody></table>
+<h3>xactions ai rewrite</h3>
+<p>Rewrite a tweet in a user&#39;s voice with a goal.</p>
+<pre><code class="language-bash">xactions ai rewrite &lt;text&gt; [options]
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>-v, --voice &lt;username&gt;</code></td>
+<td>Voice to mimic</td>
+<td><strong>required</strong></td>
+</tr>
+<tr>
+<td><code>-g, --goal &lt;goal&gt;</code></td>
+<td>more_engaging, shorter, more_professional, funnier</td>
+<td><code>more_engaging</code></td>
+</tr>
+<tr>
+<td><code>-c, --count &lt;n&gt;</code></td>
+<td>Number of variations</td>
+<td><code>3</code></td>
+</tr>
+</tbody></table>
+<h3>xactions ai calendar</h3>
+<p>Generate a weekly content calendar.</p>
+<pre><code class="language-bash">xactions ai calendar &lt;username&gt; [options]
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>-d, --days &lt;n&gt;</code></td>
+<td>Days to plan</td>
+<td><code>7</code></td>
+</tr>
+<tr>
+<td><code>-p, --posts-per-day &lt;n&gt;</code></td>
+<td>Posts per day</td>
+<td><code>3</code></td>
+</tr>
+<tr>
+<td><code>-t, --topics &lt;topics&gt;</code></td>
+<td>Comma-separated topic list</td>
+<td>auto</td>
+</tr>
+<tr>
+<td><code>-o, --output &lt;file&gt;</code></td>
+<td>Save calendar</td>
+<td>—</td>
+</tr>
+</tbody></table>
+<hr>
+<h2>AI Content Optimizer</h2>
+<h3>xactions optimize</h3>
+<p>AI-optimize a tweet for engagement.</p>
+<pre><code class="language-bash">xactions optimize &lt;text&gt; [options]
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>--goal &lt;goal&gt;</code></td>
+<td>engagement, clarity, growth, viral</td>
+<td><code>engagement</code></td>
+</tr>
+</tbody></table>
+<h3>xactions hashtags</h3>
+<p>Suggest hashtags for tweet text.</p>
+<pre><code class="language-bash">xactions hashtags &lt;text&gt; [options]
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>-n, --count &lt;n&gt;</code></td>
+<td>Number of suggestions</td>
+<td><code>5</code></td>
+</tr>
+</tbody></table>
+<h3>xactions predict</h3>
+<p>Predict tweet performance (score, reach, strengths, weaknesses).</p>
+<pre><code class="language-bash">xactions predict &lt;text&gt;
+</code></pre>
+<h3>xactions variations</h3>
+<p>Generate tweet variations.</p>
+<pre><code class="language-bash">xactions variations &lt;text&gt; [options]
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>-n, --count &lt;n&gt;</code></td>
+<td>Number of variations</td>
+<td><code>3</code></td>
+</tr>
+</tbody></table>
+<hr>
+<h2>Analytics Commands</h2>
+<h3>xactions sentiment</h3>
+<p>Analyze sentiment of text or tweet content.</p>
+<pre><code class="language-bash">xactions sentiment &lt;text&gt; [options]
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>-m, --mode &lt;mode&gt;</code></td>
+<td>rules or llm</td>
+<td><code>rules</code></td>
+</tr>
+<tr>
+<td><code>-o, --output &lt;file&gt;</code></td>
+<td>Save results</td>
+<td>stdout</td>
+</tr>
+</tbody></table>
+<h3>xactions monitor</h3>
+<p>Start monitoring sentiment for a username or keyword.</p>
+<pre><code class="language-bash">xactions monitor &lt;target&gt; [options]
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>-t, --type &lt;type&gt;</code></td>
+<td>mentions, keyword, replies</td>
+<td><code>mentions</code></td>
+</tr>
+<tr>
+<td><code>-i, --interval &lt;seconds&gt;</code></td>
+<td>Check interval</td>
+<td><code>900</code></td>
+</tr>
+<tr>
+<td><code>-m, --mode &lt;mode&gt;</code></td>
+<td>rules or llm</td>
+<td><code>rules</code></td>
+</tr>
+<tr>
+<td><code>--threshold &lt;n&gt;</code></td>
+<td>Alert threshold</td>
+<td><code>-0.3</code></td>
+</tr>
+<tr>
+<td><code>--webhook &lt;url&gt;</code></td>
+<td>Webhook for alerts</td>
+<td>—</td>
+</tr>
+</tbody></table>
+<h3>xactions report</h3>
+<p>Generate a reputation report for a monitored username.</p>
+<pre><code class="language-bash">xactions report &lt;username&gt; [options]
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>-p, --period &lt;period&gt;</code></td>
+<td>24h, 7d, 30d, all</td>
+<td><code>7d</code></td>
+</tr>
+<tr>
+<td><code>-f, --format &lt;format&gt;</code></td>
+<td>json or markdown</td>
+<td><code>markdown</code></td>
+</tr>
+<tr>
+<td><code>-o, --output &lt;file&gt;</code></td>
+<td>Save report</td>
+<td>stdout</td>
+</tr>
+</tbody></table>
+<h3>xactions history</h3>
+<p>View account history over time.</p>
+<pre><code class="language-bash">xactions history &lt;username&gt; [options]
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>-d, --days &lt;n&gt;</code></td>
+<td>Days of history</td>
+<td><code>30</code></td>
+</tr>
+<tr>
+<td><code>-i, --interval &lt;interval&gt;</code></td>
+<td>hour, day, week</td>
+<td><code>day</code></td>
+</tr>
+<tr>
+<td><code>-f, --format &lt;format&gt;</code></td>
+<td>json or csv</td>
+<td><code>json</code></td>
+</tr>
+<tr>
+<td><code>--export &lt;path&gt;</code></td>
+<td>Export to file</td>
+<td>—</td>
+</tr>
+</tbody></table>
+<h3>xactions snapshot</h3>
+<p>Start auto-snapshotting an account (long-running).</p>
+<pre><code class="language-bash">xactions snapshot &lt;username&gt; [options]
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>-i, --interval &lt;minutes&gt;</code></td>
+<td>Snapshot interval</td>
+<td><code>60</code></td>
+</tr>
+</tbody></table>
+<h3>xactions audience</h3>
+<p>Analyze follower overlap between two accounts.</p>
+<pre><code class="language-bash">xactions audience &lt;username1&gt; &lt;username2&gt; [options]
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>--max &lt;n&gt;</code></td>
+<td>Max followers to compare</td>
+<td><code>5000</code></td>
+</tr>
+</tbody></table>
+<h3>xactions evergreen</h3>
+<p>Find and recycle top-performing evergreen content.</p>
+<pre><code class="language-bash">xactions evergreen &lt;username&gt; [options]
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>--min-likes &lt;n&gt;</code></td>
+<td>Minimum likes threshold</td>
+<td><code>50</code></td>
+</tr>
+<tr>
+<td><code>--min-age &lt;days&gt;</code></td>
+<td>Minimum age in days</td>
+<td><code>30</code></td>
+</tr>
+<tr>
+<td><code>--analyze</code></td>
+<td>Analyze only (don&#39;t queue)</td>
+<td><code>false</code></td>
+</tr>
+</tbody></table>
+<hr>
+<h2>CRM Commands</h2>
+<h3>xactions crm sync</h3>
+<p>Sync followers to the built-in CRM.</p>
+<pre><code class="language-bash">xactions crm sync &lt;username&gt;
+</code></pre>
+<h3>xactions crm tag</h3>
+<p>Tag a contact.</p>
+<pre><code class="language-bash">xactions crm tag &lt;username&gt; &lt;tag&gt;
+</code></pre>
+<h3>xactions crm search</h3>
+<p>Search contacts by query.</p>
+<pre><code class="language-bash">xactions crm search &lt;query&gt;
+</code></pre>
+<h3>xactions crm score</h3>
+<p>Auto-score all contacts based on engagement.</p>
+<pre><code class="language-bash">xactions crm score
+</code></pre>
+<h3>xactions crm segment</h3>
+<p>Get members of a segment.</p>
+<pre><code class="language-bash">xactions crm segment &lt;name&gt;
+</code></pre>
+<hr>
+<h2>Scheduling Commands</h2>
+<h3>xactions schedule add</h3>
+<p>Add a scheduled job.</p>
+<pre><code class="language-bash">xactions schedule add &lt;name&gt; &lt;cron&gt; [options]
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>-c, --command &lt;cmd&gt;</code></td>
+<td>Command to execute</td>
+<td><strong>required</strong></td>
+</tr>
+</tbody></table>
+<p><strong>Example:</strong></p>
+<pre><code class="language-bash">xactions schedule add morning-scrape &quot;0 9 * * *&quot; -c &quot;xactions followers nichxbt -l 100 -o daily.json&quot;
+</code></pre>
+<h3>xactions schedule list</h3>
+<p>List all scheduled jobs.</p>
+<pre><code class="language-bash">$ xactions schedule list
+ ✅ morning-scrape  0 9 * * *   Next: 2025-01-20 09:00
+ ⏸  weekly-export   0 0 * * 1   Next: 2025-01-27 00:00 (disabled)
+</code></pre>
+<h3>xactions schedule remove</h3>
+<p>Remove a scheduled job.</p>
+<pre><code class="language-bash">xactions schedule remove &lt;name&gt;
+</code></pre>
+<h3>xactions schedule run</h3>
+<p>Run a job immediately (ignoring cron schedule).</p>
+<pre><code class="language-bash">xactions schedule run &lt;name&gt;
+</code></pre>
+<hr>
+<h2>RSS Monitor</h2>
+<h3>xactions rss add</h3>
+<p>Add an RSS feed for monitoring and auto-drafting.</p>
+<pre><code class="language-bash">xactions rss add &lt;name&gt; &lt;url&gt; [options]
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>-t, --template &lt;template&gt;</code></td>
+<td>Tweet template</td>
+<td><code>📰 {title}\n\n{link}</code></td>
+</tr>
+</tbody></table>
+<p><strong>Example:</strong></p>
+<pre><code class="language-bash">xactions rss add techcrunch https://techcrunch.com/feed/ -t &quot;🔗 {title}\n{description}\n\n{link}&quot;
+</code></pre>
+<h3>xactions rss list</h3>
+<p>List all monitored feeds.</p>
+<pre><code class="language-bash">xactions rss list
+</code></pre>
+<h3>xactions rss check</h3>
+<p>Check feeds for new items and create draft posts.</p>
+<pre><code class="language-bash">xactions rss check [name]    # Check specific feed or all feeds
+</code></pre>
+<h3>xactions rss drafts</h3>
+<p>View draft posts generated from RSS items.</p>
+<pre><code class="language-bash">xactions rss drafts
+</code></pre>
+<hr>
+<h2>Notification Commands</h2>
+<h3>xactions notify test</h3>
+<p>Send a test notification to a specific channel.</p>
+<pre><code class="language-bash">xactions notify test &lt;channel&gt;    # slack, discord, telegram, email
+</code></pre>
+<h3>xactions notify send</h3>
+<p>Send a notification to all configured channels.</p>
+<pre><code class="language-bash">xactions notify send &lt;message&gt; [options]
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>-t, --title &lt;title&gt;</code></td>
+<td>Notification title</td>
+<td><code>XActions Alert</code></td>
+</tr>
+<tr>
+<td><code>-s, --severity &lt;level&gt;</code></td>
+<td>info, warning, critical</td>
+<td><code>info</code></td>
+</tr>
+</tbody></table>
+<h3>xactions notify configure</h3>
+<p>Interactive configuration for notification channels (Slack, Discord, Telegram, email).</p>
+<pre><code class="language-bash">xactions notify configure
+</code></pre>
+<hr>
+<h2>Dataset Management</h2>
+<h3>xactions dataset list</h3>
+<p>List all stored scraping datasets.</p>
+<pre><code class="language-bash">xactions dataset list
+</code></pre>
+<h3>xactions dataset export</h3>
+<p>Export a dataset to file.</p>
+<pre><code class="language-bash">xactions dataset export &lt;name&gt; [options]
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>-f, --format &lt;format&gt;</code></td>
+<td>json, csv, jsonl</td>
+<td><code>json</code></td>
+</tr>
+<tr>
+<td><code>-o, --output &lt;path&gt;</code></td>
+<td>Output file</td>
+<td>stdout</td>
+</tr>
+</tbody></table>
+<h3>xactions dataset delete</h3>
+<p>Delete a stored dataset.</p>
+<pre><code class="language-bash">xactions dataset delete &lt;name&gt;
+</code></pre>
+<hr>
+<h2>Team Management</h2>
+<h3>xactions team create</h3>
+<p>Create a new team.</p>
+<pre><code class="language-bash">xactions team create &lt;name&gt; [options]
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>-u, --owner &lt;username&gt;</code></td>
+<td>Team owner</td>
+<td>current user</td>
+</tr>
+</tbody></table>
+<h3>xactions team invite</h3>
+<p>Invite a user to a team.</p>
+<pre><code class="language-bash">xactions team invite &lt;teamId&gt; &lt;email&gt; [options]
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>-r, --role &lt;role&gt;</code></td>
+<td>admin, member, viewer</td>
+<td><code>member</code></td>
+</tr>
+</tbody></table>
+<h3>xactions team members</h3>
+<p>List team members.</p>
+<pre><code class="language-bash">xactions team members &lt;teamId&gt;
+</code></pre>
+<h3>xactions team activity</h3>
+<p>View team activity log.</p>
+<pre><code class="language-bash">xactions team activity &lt;teamId&gt; [options]
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>-l, --limit &lt;n&gt;</code></td>
+<td>Number of entries</td>
+<td><code>20</code></td>
+</tr>
+</tbody></table>
+<hr>
+<h2>Bulk Operations</h2>
+<p>Run actions in bulk from a CSV, JSON, or TXT file.</p>
+<pre><code class="language-bash">xactions bulk &lt;action&gt; &lt;file&gt; [options]
+</code></pre>
+<p><strong>Actions:</strong> <code>follow</code>, <code>unfollow</code>, <code>block</code>, <code>mute</code>, <code>scrape</code></p>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>--delay &lt;ms&gt;</code></td>
+<td>Delay between actions</td>
+<td><code>2000</code></td>
+</tr>
+<tr>
+<td><code>--dry-run</code></td>
+<td>Preview without executing</td>
+<td><code>false</code></td>
+</tr>
+<tr>
+<td><code>--resume</code></td>
+<td>Resume from last position</td>
+<td><code>false</code></td>
+</tr>
+</tbody></table>
+<p><strong>Example:</strong></p>
+<pre><code class="language-bash">xactions bulk follow targets.csv --delay 3000
+xactions bulk scrape usernames.txt -o results.json
+</code></pre>
+<hr>
+<h2>Import/Export Compatibility</h2>
+<h3>xactions import</h3>
+<p>Import data from Apify, Phantombuster, or CSV.</p>
+<pre><code class="language-bash">xactions import &lt;file&gt; [options]
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>--from &lt;source&gt;</code></td>
+<td>apify, phantombuster, auto</td>
+<td><code>auto</code></td>
+</tr>
+<tr>
+<td><code>-o, --output &lt;path&gt;</code></td>
+<td>Output file</td>
+<td>—</td>
+</tr>
+</tbody></table>
+<h3>xactions export-data</h3>
+<p>Export data in external tool format.</p>
+<pre><code class="language-bash">xactions export-data &lt;file&gt; [options]
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>--to &lt;target&gt;</code></td>
+<td>apify, phantombuster, socialblade, csv</td>
+<td><code>csv</code></td>
+</tr>
+<tr>
+<td><code>--type &lt;type&gt;</code></td>
+<td>profile, tweet, followers</td>
+<td><code>profile</code></td>
+</tr>
+<tr>
+<td><code>-o, --output &lt;path&gt;</code></td>
+<td>Output file</td>
+<td>—</td>
+</tr>
+</tbody></table>
+<h3>xactions convert</h3>
+<p>Convert between data formats.</p>
+<pre><code class="language-bash">xactions convert &lt;file&gt; [options]
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>--from &lt;source&gt;</code></td>
+<td>Source format</td>
+<td><code>apify</code></td>
+</tr>
+<tr>
+<td><code>--to &lt;target&gt;</code></td>
+<td>Target format</td>
+<td><code>csv</code></td>
+</tr>
+<tr>
+<td><code>-o, --output &lt;path&gt;</code></td>
+<td>Output file</td>
+<td>—</td>
+</tr>
+</tbody></table>
+<hr>
+<h2>MCP Config</h2>
+<p>Generate MCP server configuration for AI tools.</p>
+<pre><code class="language-bash">xactions mcp-config [options]
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>-w, --write</code></td>
+<td>Write to config file</td>
+<td><code>false</code></td>
+</tr>
+<tr>
+<td><code>-c, --client &lt;client&gt;</code></td>
+<td>claude, cursor, windsurf, vscode</td>
+<td><code>claude</code></td>
+</tr>
+</tbody></table>
+<p><strong>Example:</strong></p>
+<pre><code class="language-bash"># Generate config for Claude Desktop
+xactions mcp-config -c claude
+
+# Write directly to Claude config file
+xactions mcp-config -c claude --write
+</code></pre>
+<hr>
 <h2>Output Formats</h2>
 <p>XActions supports two output formats: <strong>JSON</strong> and <strong>CSV</strong>.</p>
 <h3>JSON Output</h3>
@@ -1517,17 +2780,17 @@ XACTIONS_HEADLESS=false xactions profile nichxbt
 </tr>
 <tr>
 <td><code>persona create</code></td>
-<td>Create a new persona</td>
+<td>Create a persona</td>
 <td><code>xactions persona create</code></td>
 </tr>
 <tr>
 <td><code>persona list</code></td>
-<td>List all personas</td>
+<td>List personas</td>
 <td><code>xactions persona list</code></td>
 </tr>
 <tr>
 <td><code>persona run</code></td>
-<td>Start 24/7 algorithm builder</td>
+<td>Start algorithm builder</td>
 <td><code>xactions persona run &lt;id&gt;</code></td>
 </tr>
 <tr>
@@ -1537,13 +2800,413 @@ XACTIONS_HEADLESS=false xactions profile nichxbt
 </tr>
 <tr>
 <td><code>persona edit</code></td>
-<td>Modify persona config</td>
+<td>Modify persona</td>
 <td><code>xactions persona edit &lt;id&gt; --strategy aggressive</code></td>
 </tr>
 <tr>
 <td><code>persona delete</code></td>
 <td>Delete a persona</td>
 <td><code>xactions persona delete &lt;id&gt;</code></td>
+</tr>
+<tr>
+<td><code>agent setup</code></td>
+<td>Agent setup wizard</td>
+<td><code>xactions agent setup</code></td>
+</tr>
+<tr>
+<td><code>agent start</code></td>
+<td>Start thought leader agent</td>
+<td><code>xactions agent start</code></td>
+</tr>
+<tr>
+<td><code>agent test</code></td>
+<td>5-minute test run</td>
+<td><code>xactions agent test</code></td>
+</tr>
+<tr>
+<td><code>agent login</code></td>
+<td>Manual browser login</td>
+<td><code>xactions agent login</code></td>
+</tr>
+<tr>
+<td><code>agent status</code></td>
+<td>Today&#39;s agent metrics</td>
+<td><code>xactions agent status</code></td>
+</tr>
+<tr>
+<td><code>agent report</code></td>
+<td>Growth report</td>
+<td><code>xactions agent report -d 30</code></td>
+</tr>
+<tr>
+<td><code>plugin install</code></td>
+<td>Install plugin</td>
+<td><code>xactions plugin install xactions-plugin-*</code></td>
+</tr>
+<tr>
+<td><code>plugin remove</code></td>
+<td>Remove plugin</td>
+<td><code>xactions plugin remove &lt;name&gt;</code></td>
+</tr>
+<tr>
+<td><code>plugin list</code></td>
+<td>List plugins</td>
+<td><code>xactions plugin list</code></td>
+</tr>
+<tr>
+<td><code>plugin enable</code></td>
+<td>Enable plugin</td>
+<td><code>xactions plugin enable &lt;name&gt;</code></td>
+</tr>
+<tr>
+<td><code>plugin disable</code></td>
+<td>Disable plugin</td>
+<td><code>xactions plugin disable &lt;name&gt;</code></td>
+</tr>
+<tr>
+<td><code>plugin discover</code></td>
+<td>Discover plugins</td>
+<td><code>xactions plugin discover</code></td>
+</tr>
+<tr>
+<td><code>stream start</code></td>
+<td>Start real-time stream</td>
+<td><code>xactions stream start tweet nichxbt -i 30</code></td>
+</tr>
+<tr>
+<td><code>stream stop</code></td>
+<td>Stop stream</td>
+<td><code>xactions stream stop &lt;id&gt;</code></td>
+</tr>
+<tr>
+<td><code>stream list</code></td>
+<td>List streams</td>
+<td><code>xactions stream list</code></td>
+</tr>
+<tr>
+<td><code>stream history</code></td>
+<td>Stream event history</td>
+<td><code>xactions stream history &lt;id&gt; -l 50</code></td>
+</tr>
+<tr>
+<td><code>stream pause</code></td>
+<td>Pause stream</td>
+<td><code>xactions stream pause &lt;id&gt;</code></td>
+</tr>
+<tr>
+<td><code>stream resume</code></td>
+<td>Resume stream</td>
+<td><code>xactions stream resume &lt;id&gt;</code></td>
+</tr>
+<tr>
+<td><code>stream status</code></td>
+<td>Stream details</td>
+<td><code>xactions stream status &lt;id&gt;</code></td>
+</tr>
+<tr>
+<td><code>stream stop-all</code></td>
+<td>Stop all streams</td>
+<td><code>xactions stream stop-all</code></td>
+</tr>
+<tr>
+<td><code>workflow create</code></td>
+<td>Create workflow</td>
+<td><code>xactions workflow create -f flow.json</code></td>
+</tr>
+<tr>
+<td><code>workflow run</code></td>
+<td>Run workflow</td>
+<td><code>xactions workflow run morning-engage</code></td>
+</tr>
+<tr>
+<td><code>workflow list</code></td>
+<td>List workflows</td>
+<td><code>xactions workflow list</code></td>
+</tr>
+<tr>
+<td><code>workflow delete</code></td>
+<td>Delete workflow</td>
+<td><code>xactions workflow delete &lt;id&gt;</code></td>
+</tr>
+<tr>
+<td><code>workflow actions</code></td>
+<td>List actions</td>
+<td><code>xactions workflow actions</code></td>
+</tr>
+<tr>
+<td><code>workflow runs</code></td>
+<td>Execution history</td>
+<td><code>xactions workflow runs &lt;id&gt;</code></td>
+</tr>
+<tr>
+<td><code>graph build</code></td>
+<td>Build social graph</td>
+<td><code>xactions graph build nichxbt -d 2</code></td>
+</tr>
+<tr>
+<td><code>graph analyze</code></td>
+<td>Analyze graph</td>
+<td><code>xactions graph analyze &lt;id&gt;</code></td>
+</tr>
+<tr>
+<td><code>graph recommend</code></td>
+<td>Get recommendations</td>
+<td><code>xactions graph recommend &lt;id&gt;</code></td>
+</tr>
+<tr>
+<td><code>graph export</code></td>
+<td>Export graph</td>
+<td><code>xactions graph export &lt;id&gt; -f html</code></td>
+</tr>
+<tr>
+<td><code>graph list</code></td>
+<td>List graphs</td>
+<td><code>xactions graph list</code></td>
+</tr>
+<tr>
+<td><code>graph delete</code></td>
+<td>Delete graph</td>
+<td><code>xactions graph delete &lt;id&gt;</code></td>
+</tr>
+<tr>
+<td><code>export</code></td>
+<td>Export account</td>
+<td><code>xactions export nichxbt -f json,csv</code></td>
+</tr>
+<tr>
+<td><code>migrate</code></td>
+<td>Migrate to Bluesky/Mastodon</td>
+<td><code>xactions migrate user --to bluesky</code></td>
+</tr>
+<tr>
+<td><code>diff</code></td>
+<td>Compare exports</td>
+<td><code>xactions diff export1/ export2/</code></td>
+</tr>
+<tr>
+<td><code>scrape</code></td>
+<td>Cross-platform scrape</td>
+<td><code>xactions scrape profile -p bluesky -u user</code></td>
+</tr>
+<tr>
+<td><code>platforms</code></td>
+<td>List platforms</td>
+<td><code>xactions platforms</code></td>
+</tr>
+<tr>
+<td><code>ai analyze</code></td>
+<td>Analyze writing voice</td>
+<td><code>xactions ai analyze nichxbt</code></td>
+</tr>
+<tr>
+<td><code>ai generate</code></td>
+<td>Generate tweets</td>
+<td><code>xactions ai generate &quot;AI&quot; -v nichxbt</code></td>
+</tr>
+<tr>
+<td><code>ai rewrite</code></td>
+<td>Rewrite tweet</td>
+<td><code>xactions ai rewrite &quot;text&quot; -v nichxbt</code></td>
+</tr>
+<tr>
+<td><code>ai calendar</code></td>
+<td>Content calendar</td>
+<td><code>xactions ai calendar nichxbt -d 7</code></td>
+</tr>
+<tr>
+<td><code>optimize</code></td>
+<td>Optimize tweet</td>
+<td><code>xactions optimize &quot;my tweet&quot;</code></td>
+</tr>
+<tr>
+<td><code>hashtags</code></td>
+<td>Suggest hashtags</td>
+<td><code>xactions hashtags &quot;my tweet&quot; -n 5</code></td>
+</tr>
+<tr>
+<td><code>predict</code></td>
+<td>Predict performance</td>
+<td><code>xactions predict &quot;my tweet&quot;</code></td>
+</tr>
+<tr>
+<td><code>variations</code></td>
+<td>Generate variations</td>
+<td><code>xactions variations &quot;my tweet&quot; -n 5</code></td>
+</tr>
+<tr>
+<td><code>sentiment</code></td>
+<td>Analyze sentiment</td>
+<td><code>xactions sentiment &quot;great news!&quot;</code></td>
+</tr>
+<tr>
+<td><code>monitor</code></td>
+<td>Monitor reputation</td>
+<td><code>xactions monitor nichxbt -i 300</code></td>
+</tr>
+<tr>
+<td><code>report</code></td>
+<td>Reputation report</td>
+<td><code>xactions report nichxbt -p 7d</code></td>
+</tr>
+<tr>
+<td><code>history</code></td>
+<td>Account history</td>
+<td><code>xactions history nichxbt -d 30</code></td>
+</tr>
+<tr>
+<td><code>snapshot</code></td>
+<td>Auto-snapshot</td>
+<td><code>xactions snapshot nichxbt -i 60</code></td>
+</tr>
+<tr>
+<td><code>audience</code></td>
+<td>Follower overlap</td>
+<td><code>xactions audience user1 user2</code></td>
+</tr>
+<tr>
+<td><code>evergreen</code></td>
+<td>Recycle top content</td>
+<td><code>xactions evergreen nichxbt</code></td>
+</tr>
+<tr>
+<td><code>crm sync</code></td>
+<td>Sync followers to CRM</td>
+<td><code>xactions crm sync nichxbt</code></td>
+</tr>
+<tr>
+<td><code>crm tag</code></td>
+<td>Tag contact</td>
+<td><code>xactions crm tag user vip</code></td>
+</tr>
+<tr>
+<td><code>crm search</code></td>
+<td>Search contacts</td>
+<td><code>xactions crm search &quot;ai&quot;</code></td>
+</tr>
+<tr>
+<td><code>crm score</code></td>
+<td>Auto-score contacts</td>
+<td><code>xactions crm score</code></td>
+</tr>
+<tr>
+<td><code>crm segment</code></td>
+<td>Get segment</td>
+<td><code>xactions crm segment influencers</code></td>
+</tr>
+<tr>
+<td><code>schedule add</code></td>
+<td>Add scheduled job</td>
+<td><code>xactions schedule add job &quot;0 9 * * *&quot; -c &quot;...&quot;</code></td>
+</tr>
+<tr>
+<td><code>schedule list</code></td>
+<td>List jobs</td>
+<td><code>xactions schedule list</code></td>
+</tr>
+<tr>
+<td><code>schedule remove</code></td>
+<td>Remove job</td>
+<td><code>xactions schedule remove &lt;name&gt;</code></td>
+</tr>
+<tr>
+<td><code>schedule run</code></td>
+<td>Run job now</td>
+<td><code>xactions schedule run &lt;name&gt;</code></td>
+</tr>
+<tr>
+<td><code>rss add</code></td>
+<td>Add RSS feed</td>
+<td><code>xactions rss add tech https://...</code></td>
+</tr>
+<tr>
+<td><code>rss list</code></td>
+<td>List feeds</td>
+<td><code>xactions rss list</code></td>
+</tr>
+<tr>
+<td><code>rss check</code></td>
+<td>Check for new items</td>
+<td><code>xactions rss check</code></td>
+</tr>
+<tr>
+<td><code>rss drafts</code></td>
+<td>View draft posts</td>
+<td><code>xactions rss drafts</code></td>
+</tr>
+<tr>
+<td><code>notify test</code></td>
+<td>Test notification</td>
+<td><code>xactions notify test slack</code></td>
+</tr>
+<tr>
+<td><code>notify send</code></td>
+<td>Send notification</td>
+<td><code>xactions notify send &quot;Alert!&quot;</code></td>
+</tr>
+<tr>
+<td><code>notify configure</code></td>
+<td>Configure channels</td>
+<td><code>xactions notify configure</code></td>
+</tr>
+<tr>
+<td><code>dataset list</code></td>
+<td>List datasets</td>
+<td><code>xactions dataset list</code></td>
+</tr>
+<tr>
+<td><code>dataset export</code></td>
+<td>Export dataset</td>
+<td><code>xactions dataset export my-data -f csv</code></td>
+</tr>
+<tr>
+<td><code>dataset delete</code></td>
+<td>Delete dataset</td>
+<td><code>xactions dataset delete my-data</code></td>
+</tr>
+<tr>
+<td><code>team create</code></td>
+<td>Create team</td>
+<td><code>xactions team create &quot;My Team&quot;</code></td>
+</tr>
+<tr>
+<td><code>team invite</code></td>
+<td>Invite member</td>
+<td><code>xactions team invite &lt;id&gt; user@email.com</code></td>
+</tr>
+<tr>
+<td><code>team members</code></td>
+<td>List members</td>
+<td><code>xactions team members &lt;id&gt;</code></td>
+</tr>
+<tr>
+<td><code>team activity</code></td>
+<td>Activity log</td>
+<td><code>xactions team activity &lt;id&gt;</code></td>
+</tr>
+<tr>
+<td><code>bulk</code></td>
+<td>Bulk operations</td>
+<td><code>xactions bulk follow targets.csv</code></td>
+</tr>
+<tr>
+<td><code>import</code></td>
+<td>Import data</td>
+<td><code>xactions import data.json --from apify</code></td>
+</tr>
+<tr>
+<td><code>export-data</code></td>
+<td>Export to format</td>
+<td><code>xactions export-data data.json --to csv</code></td>
+</tr>
+<tr>
+<td><code>convert</code></td>
+<td>Convert formats</td>
+<td><code>xactions convert data.json --to csv</code></td>
+</tr>
+<tr>
+<td><code>mcp-config</code></td>
+<td>Generate MCP config</td>
+<td><code>xactions mcp-config -c claude --write</code></td>
 </tr>
 </tbody></table>
 <hr>
@@ -1624,6 +3287,5 @@ XACTIONS_HEADLESS=false xactions profile nichxbt
       <p>© 2024-2026 XActions. MIT License. No API fees. No limits.</p>
     </div>
   </footer>
-<script src="/js/sidebar.js"></script>
 </body>
 </html>

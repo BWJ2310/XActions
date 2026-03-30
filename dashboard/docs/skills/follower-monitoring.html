@@ -78,7 +78,7 @@
       min-height: 100vh;
     }
     .layout { display: flex; max-width: 1300px; margin: 0 auto; min-height: 100vh; }
-    .sidebar-left { width: 275px; padding: 0 12px; position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; border-right: 1px solid var(--border); }
+    .sidebar { width: 275px; padding: 0 12px; position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; border-right: 1px solid var(--border); }
     .logo { padding: 12px; }
     .logo a { display: flex; align-items: center; gap: 8px; text-decoration: none; color: var(--text-primary); font-size: 1.5rem; font-weight: 800; padding: 12px; border-radius: 9999px; transition: background .2s; }
     .logo a:hover { background: var(--accent-light); }
@@ -137,7 +137,7 @@
     @media (max-width: 1024px) { .sidebar-right { display: none; } }
     @media (max-width: 768px) {
       .layout { flex-direction: column; }
-      .sidebar-left { display: none; }
+      .sidebar { display: none; }
       .main-content { max-width: 100%; border-right: none; }
       .article pre { font-size: 0.75rem; }
       .footer-content { grid-template-columns: 1fr 1fr; }
@@ -146,7 +146,19 @@
 </head>
 <body>
   <div class="layout">
-    <aside class="sidebar-left"></aside>
+    <aside class="sidebar">
+      <div class="logo"><a href="/">⚡ XActions</a></div>
+      <nav>
+        <a href="/features" class="nav-item"><span class="nav-icon">⚡</span><span>All Scripts</span></a>
+        <a href="/tutorials" class="nav-item"><span class="nav-icon">📚</span><span>Tutorials</span></a>
+        <a href="/docs" class="nav-item active"><span class="nav-icon">📖</span><span>Documentation</span></a>
+        <a href="/ai" class="nav-item"><span class="nav-icon">🤖</span><span>AI/MCP</span></a>
+        <a href="/pricing" class="nav-item"><span class="nav-icon">💰</span><span>Pricing</span></a>
+        <a href="/about" class="nav-item"><span class="nav-icon">ℹ️</span><span>About</span></a>
+        <a href="https://github.com/nirholas/XActions" class="nav-item" target="_blank" rel="noopener"><span class="nav-icon">⭐</span><span>GitHub</span></a>
+      </nav>
+      <a href="/dashboard" class="action-btn">Open Dashboard</a>
+    </aside>
 
     <main class="main-content">
       <header class="main-header">
@@ -301,14 +313,14 @@ localStorage.removeItem(&#39;xactions_ratio_history&#39;)
     <aside class="sidebar-right">
       <div class="sidebar-card">
         <h3>📖 In This Section</h3>
-                <a href="/docs/skills/algorithm-cultivation">🎯 Algorithm Cultivation &amp; Thought Leadership</a>
+                <a href="/docs/skills/a2a-multi-agent">🎯 Skill: A2A Multi-Agent Orchestration</a>
+        <a href="/docs/skills/algorithm-cultivation">🎯 Algorithm Cultivation &amp; Thought Leadership</a>
         <a href="/docs/skills/analytics-insights">🎯 Analytics &amp; Insights</a>
         <a href="/docs/skills/articles-longform">🎯 Articles &amp; Longform</a>
         <a href="/docs/skills/blocking-muting-management">🎯 Blocking &amp; Muting Management</a>
         <a href="/docs/skills/bookmarks-management">🎯 Bookmarks Management</a>
         <a href="/docs/skills/business-ads">🎯 Business &amp; Ads Tools</a>
         <a href="/docs/skills/community-health-monitoring">🎯 Community Health Monitoring</a>
-        <a href="/docs/skills/community-management">🎯 Community Management</a>
       </div>
       <div class="sidebar-card">
         <h3>🔗 Quick Links</h3>
@@ -357,6 +369,5 @@ localStorage.removeItem(&#39;xactions_ratio_history&#39;)
       <p>© 2024-2026 XActions. MIT License. No API fees. No limits.</p>
     </div>
   </footer>
-<script src="/js/sidebar.js"></script>
 </body>
 </html>

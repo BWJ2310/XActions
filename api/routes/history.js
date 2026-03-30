@@ -5,8 +5,12 @@
  */
 
 import { Router } from 'express';
+import { authenticate } from '../middleware/auth.js';
 
 const router = Router();
+
+// Require authentication for all history routes
+router.use(authenticate);
 
 // GET /api/analytics/history/:username — get account history
 router.get('/history/:username', async (req, res) => {

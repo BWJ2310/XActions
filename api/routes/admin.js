@@ -5,7 +5,8 @@
  */
 
 import { Router } from 'express';
-import { 
+import crypto from 'crypto';
+import {
   createLicense,
   validateLicenseKey,
   activateLicense,
@@ -80,7 +81,7 @@ router.post('/licenses', authenticateToken, requireAdmin, async (req, res) => {
       message: `License key created: ${license.key}`,
     });
   } catch (error) {
-    console.error('Create license error:', error);
+    console.error('❌ Create license error:', error);
     res.status(500).json({ error: 'Failed to create license' });
   }
 });
@@ -102,7 +103,7 @@ router.get('/licenses', authenticateToken, requireAdmin, async (req, res) => {
 
     res.json(result);
   } catch (error) {
-    console.error('List licenses error:', error);
+    console.error('❌ List licenses error:', error);
     res.status(500).json({ error: 'Failed to list licenses' });
   }
 });
@@ -122,7 +123,7 @@ router.get('/licenses/:key', authenticateToken, requireAdmin, async (req, res) =
 
     res.json({ license });
   } catch (error) {
-    console.error('Get license error:', error);
+    console.error('❌ Get license error:', error);
     res.status(500).json({ error: 'Failed to get license' });
   }
 });
@@ -181,9 +182,10 @@ router.post('/licenses/:key/validate', authenticateToken, requireAdmin, async (r
  * Protected by admin API key
  */
 router.get('/x402/stats', (req, res) => {
-  // Simple auth check via API key header
-  const adminKey = req.headers['x-admin-key'];
-  if (adminKey !== process.env.ADMIN_API_KEY) {
+  // Timing-safe auth check via API key header
+  const adminKey = req.headers['x-admin-key'] || '';
+  const expected = process.env.ADMIN_API_KEY || '';
+  if (!expected || !adminKey || !crypto.timingSafeEquals(Buffer.from(adminKey), Buffer.from(expected))) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
@@ -201,9 +203,10 @@ router.get('/x402/stats', (req, res) => {
  * Protected by admin API key
  */
 router.get('/x402/webhooks', (req, res) => {
-  // Simple auth check via API key header
-  const adminKey = req.headers['x-admin-key'];
-  if (adminKey !== process.env.ADMIN_API_KEY) {
+  // Timing-safe auth check via API key header
+  const adminKey = req.headers['x-admin-key'] || '';
+  const expected = process.env.ADMIN_API_KEY || '';
+  if (!expected || !adminKey || !crypto.timingSafeEquals(Buffer.from(adminKey), Buffer.from(expected))) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
@@ -221,9 +224,10 @@ router.get('/x402/webhooks', (req, res) => {
  * Protected by admin API key
  */
 router.post('/x402/webhooks/test', async (req, res) => {
-  // Simple auth check via API key header
-  const adminKey = req.headers['x-admin-key'];
-  if (adminKey !== process.env.ADMIN_API_KEY) {
+  // Timing-safe auth check via API key header
+  const adminKey = req.headers['x-admin-key'] || '';
+  const expected = process.env.ADMIN_API_KEY || '';
+  if (!expected || !adminKey || !crypto.timingSafeEquals(Buffer.from(adminKey), Buffer.from(expected))) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 

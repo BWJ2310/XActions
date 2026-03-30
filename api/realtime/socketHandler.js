@@ -14,7 +14,9 @@ const adminSockets = new Set(); // Admin sockets watching all sessions
 export function initializeSocketIO(httpServer) {
   const io = new Server(httpServer, {
     cors: {
-      origin: process.env.FRONTEND_URL || '*',
+      origin: process.env.FRONTEND_URL
+        ? [process.env.FRONTEND_URL]
+        : (process.env.NODE_ENV === 'production' ? ['https://xactions.app'] : true),
       methods: ['GET', 'POST'],
       credentials: true
     }

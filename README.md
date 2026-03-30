@@ -375,7 +375,7 @@ This only applies to the hosted remote API. Local mode is always free.
 <tr><td><strong>AI Features</strong></td><td>Sentiment, Grok, reputation</td><td>None</td></tr>
 <tr><td><strong>Export</strong></td><td>JSON, CSV, Markdown, HTML</td><td>JSON only (if any)</td></tr>
 <tr><td><strong>Migration</strong></td><td>Bluesky & Mastodon stubs</td><td>None</td></tr>
-<tr><td><strong>Tutorials</strong></td><td>22 Claude prompts</td><td>None</td></tr>
+<tr><td><strong>Tutorials</strong></td><td>23 Claude prompts</td><td>None</td></tr>
 </table>
 
 ---
@@ -436,7 +436,7 @@ See [docs/api-reference.md](docs/api-reference.md) for the complete reference wi
 
 ## 📝 Claude Tutorials
 
-**22 ready-to-paste prompt files** that turn Claude into your personal X automation expert.
+**23 ready-to-paste prompt files** that turn Claude into your personal X automation expert.
 
 | Tutorial | What You'll Learn |
 |----------|------------------|
@@ -446,9 +446,10 @@ See [docs/api-reference.md](docs/api-reference.md) for the complete reference wi
 | [Scraping](tutorials/claude-prompts/04-scraping-research-analysis.md) | Extract profiles, tweets, hashtags |
 | [Content Posting](tutorials/claude-prompts/05-content-posting-threads-scheduling.md) | Tweets, threads, polls, scheduling |
 | [Analytics](tutorials/claude-prompts/06-analytics-competitor-intelligence.md) | Performance tracking, competitor analysis |
+| [Autonomous Space Agent](tutorials/claude-prompts/23-autonomous-space-agent.md) | Deploy AI voice agents in live X Spaces |
 | [Power User Playbook](tutorials/claude-prompts/22-advanced-power-user-playbook.md) | 10 advanced multi-feature strategies |
 
-**[See all 22 tutorials →](tutorials/claude-prompts/README.md)**
+**[See all 23 tutorials →](tutorials/claude-prompts/README.md)**
 
 ---
 

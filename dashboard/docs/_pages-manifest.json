@@ -200,6 +200,16 @@
     "priority": 0.6
   },
   {
+    "slug": "a2a-multi-agent",
+    "title": "Skill: A2A Multi-Agent Orchestration",
+    "description": "Turn XActions into an A2A-compatible agent that can discover, communicate with, and delegate tasks to other AI agents using Google's Agent-to-Agent protocol.",
+    "section": "Agent Skills",
+    "icon": "🎯",
+    "urlPath": "/docs/skills/a2a-multi-agent",
+    "outSubdir": "skills",
+    "priority": 0.7
+  },
+  {
     "slug": "algorithm-cultivation",
     "title": "Algorithm Cultivation & Thought Leadership",
     "description": "Train your X/Twitter algorithm for a specific niche. Three approaches:",
@@ -882,7 +892,7 @@
   {
     "slug": "readme",
     "title": "Quick start",
-    "description": "<source media=\"(prefers-color-scheme: dark)\" srcset=\".github/xshare.png\">",
+    "description": "██╗  ██╗ █████╗  ██████╗████████╗██╗ ██████╗ ███╗   ██╗███████╗",
     "section": "Project Info",
     "icon": "📄",
     "urlPath": "/docs/project/readme",

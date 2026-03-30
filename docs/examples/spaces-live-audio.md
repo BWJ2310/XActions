@@ -71,6 +71,13 @@ Input: { "url": "https://x.com/i/spaces/1abc..." }
 | Events | Ticketed virtual events | 2026 |
 | Circles | Private broadcast groups | 2026 |
 
+## 🤖 Autonomous Space Agent
+
+Want an AI agent that joins Spaces and speaks autonomously? See the dedicated guide:
+
+- **[Autonomous Space Agent Guide](../spaces-agent.md)** — full setup for AI voice agents in Spaces
+- **[Tutorial 23: Autonomous Space Agent](../../tutorials/claude-prompts/23-autonomous-space-agent.md)** — step-by-step Claude tutorial
+
 ## ⚠️ Notes
 
 - Spaces require the mobile app or desktop browser

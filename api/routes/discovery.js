@@ -33,7 +33,7 @@ router.get('/search', async (req, res) => {
 
     res.json({ operationId: operation.id, status: 'queued', message: 'Search queued' });
   } catch (error) {
-    console.error('Search error:', error);
+    console.error('❌ Search error:', error);
     res.status(500).json({ error: 'Failed to search' });
   }
 });
@@ -62,7 +62,7 @@ router.get('/trends', async (req, res) => {
 
     res.json({ operationId: operation.id, status: 'queued', message: 'Trends fetch queued' });
   } catch (error) {
-    console.error('Trends error:', error);
+    console.error('❌ Trends error:', error);
     res.status(500).json({ error: 'Failed to fetch trends' });
   }
 });
@@ -91,7 +91,7 @@ router.get('/explore', async (req, res) => {
 
     res.json({ operationId: operation.id, status: 'queued', message: 'Explore feed fetch queued' });
   } catch (error) {
-    console.error('Explore error:', error);
+    console.error('❌ Explore error:', error);
     res.status(500).json({ error: 'Failed to fetch explore feed' });
   }
 });

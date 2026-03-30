@@ -32,7 +32,7 @@ router.get('/analytics', async (req, res) => {
 
     res.json({ operationId: operation.id, status: 'queued', message: 'Analytics fetch queued' });
   } catch (error) {
-    console.error('Analytics error:', error);
+    console.error('❌ Analytics error:', error);
     res.status(500).json({ error: 'Failed to get analytics' });
   }
 });
@@ -59,7 +59,7 @@ router.get('/revenue', async (req, res) => {
 
     res.json({ operationId: operation.id, status: 'queued', message: 'Revenue fetch queued' });
   } catch (error) {
-    console.error('Revenue error:', error);
+    console.error('❌ Revenue error:', error);
     res.status(500).json({ error: 'Failed to get revenue' });
   }
 });
@@ -88,7 +88,7 @@ router.get('/subscribers', async (req, res) => {
 
     res.json({ operationId: operation.id, status: 'queued', message: 'Subscribers fetch queued' });
   } catch (error) {
-    console.error('Subscribers error:', error);
+    console.error('❌ Subscribers error:', error);
     res.status(500).json({ error: 'Failed to get subscribers' });
   }
 });

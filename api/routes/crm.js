@@ -5,8 +5,12 @@
  */
 
 import { Router } from 'express';
+import { authenticate } from '../middleware/auth.js';
 
 const router = Router();
+
+// Require authentication for all CRM routes
+router.use(authenticate);
 
 // POST /api/crm/sync/:username
 router.post('/sync/:username', async (req, res) => {

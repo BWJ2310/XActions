@@ -68,7 +68,7 @@ router.post('/', async (req, res) => {
     res.status(201).json(stream);
   } catch (error) {
     const status = error.message?.includes('already exists') ? 409 : 500;
-    console.error('POST /api/streams error:', error.message);
+    console.error('❌ POST /api/streams error:', error.message);
     res.status(status).json({ error: error.message });
   }
 });
@@ -83,7 +83,7 @@ router.get('/stats', async (_req, res) => {
     const healthy = await isHealthy();
     res.json({ ...stats, healthy });
   } catch (error) {
-    console.error('GET /api/streams/stats error:', error);
+    console.error('❌ GET /api/streams/stats error:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -97,7 +97,7 @@ router.get('/', async (_req, res) => {
     const streams = await listStreams();
     res.json({ streams, count: streams.length, pool: getPoolStatus() });
   } catch (error) {
-    console.error('GET /api/streams error:', error);
+    console.error('❌ GET /api/streams error:', error);
     res.status(500).json({ error: error.message });
   }
 });

@@ -32,7 +32,7 @@ router.get('/', async (req, res) => {
 
     res.json({ operationId: operation.id, status: 'queued', message: 'Bookmark export queued' });
   } catch (error) {
-    console.error('Get bookmarks error:', error);
+    console.error('❌ Get bookmarks error:', error);
     res.status(500).json({ error: 'Failed to get bookmarks' });
   }
 });
@@ -62,7 +62,7 @@ router.post('/folders', async (req, res) => {
 
     res.json({ operationId: operation.id, status: 'queued', message: 'Folder creation queued' });
   } catch (error) {
-    console.error('Create folder error:', error);
+    console.error('❌ Create folder error:', error);
     res.status(500).json({ error: 'Failed to create folder' });
   }
 });
@@ -93,7 +93,7 @@ router.delete('/clear', async (req, res) => {
 
     res.json({ operationId: operation.id, status: 'queued', message: 'Bookmark clear queued' });
   } catch (error) {
-    console.error('Clear bookmarks error:', error);
+    console.error('❌ Clear bookmarks error:', error);
     res.status(500).json({ error: 'Failed to clear bookmarks' });
   }
 });

@@ -640,7 +640,9 @@ async function build() {
   console.log(`\n✅ Generated ${totalCount} new HTML pages`);
   console.log(`📋 Sitemap entries → dashboard/docs/_sitemap-all-entries.xml`);
   console.log(`📋 Pages manifest → dashboard/docs/_pages-manifest.json`);
-  console.log(`\nTotal indexable doc pages: ${totalCount} + 71 (Phase 2) = ${totalCount + 71}`);
+  // Count Phase 2 pages dynamically
+  const phase2Count = fs.readdirSync(OUT_BASE).filter(f => f.endsWith('.html') && !f.startsWith('_')).length;
+  console.log(`\nTotal indexable doc pages: ${totalCount} (Phase 3) + ${phase2Count} (Phase 2) = ${totalCount + phase2Count}`);
 }
 
 // Helper to find source file from page info

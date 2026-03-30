@@ -52,7 +52,7 @@ router.post('/unfollow-non-followers', async (req, res) => {
       message: 'Unfollow operation queued successfully'
     });
   } catch (error) {
-    console.error('Unfollow non-followers error:', error);
+    console.error('❌ Unfollow non-followers error:', error);
     res.status(500).json({ error: 'Failed to start unfollow operation' });
   }
 });
@@ -94,7 +94,7 @@ router.post('/unfollow-everyone', async (req, res) => {
       message: 'Unfollow everyone operation queued successfully'
     });
   } catch (error) {
-    console.error('Unfollow everyone error:', error);
+    console.error('❌ Unfollow everyone error:', error);
     res.status(500).json({ error: 'Failed to start unfollow operation' });
   }
 });
@@ -132,7 +132,7 @@ router.post('/detect-unfollowers', async (req, res) => {
       message: 'Detect unfollowers operation queued successfully'
     });
   } catch (error) {
-    console.error('Detect unfollowers error:', error);
+    console.error('❌ Detect unfollowers error:', error);
     res.status(500).json({ error: 'Failed to start detect operation' });
   }
 });
@@ -155,7 +155,7 @@ router.get('/status/:operationId', async (req, res) => {
 
     res.json(operation);
   } catch (error) {
-    console.error('Operation status error:', error);
+    console.error('❌ Operation status error:', error);
     res.status(500).json({ error: 'Failed to fetch operation status' });
   }
 });
@@ -184,7 +184,7 @@ router.post('/cancel/:operationId', async (req, res) => {
 
     res.json({ message: 'Operation cancelled successfully' });
   } catch (error) {
-    console.error('Operation cancellation error:', error);
+    console.error('❌ Operation cancellation error:', error);
     res.status(500).json({ error: 'Failed to cancel operation' });
   }
 });
@@ -219,7 +219,7 @@ router.get('/', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Operations list error:', error);
+    console.error('❌ Operations list error:', error);
     res.status(500).json({ error: 'Failed to fetch operations' });
   }
 });

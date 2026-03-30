@@ -32,7 +32,7 @@ router.get('/live', async (req, res) => {
 
     res.json({ operationId: operation.id, status: 'queued', message: 'Spaces fetch queued' });
   } catch (error) {
-    console.error('Spaces error:', error);
+    console.error('❌ Spaces error:', error);
     res.status(500).json({ error: 'Failed to get Spaces' });
   }
 });
@@ -61,7 +61,7 @@ router.get('/scheduled', async (req, res) => {
 
     res.json({ operationId: operation.id, status: 'queued', message: 'Scheduled Spaces fetch queued' });
   } catch (error) {
-    console.error('Scheduled Spaces error:', error);
+    console.error('❌ Scheduled Spaces error:', error);
     res.status(500).json({ error: 'Failed to get scheduled Spaces' });
   }
 });
@@ -91,7 +91,7 @@ router.get('/scrape', async (req, res) => {
 
     res.json({ operationId: operation.id, status: 'queued', message: 'Space scrape queued' });
   } catch (error) {
-    console.error('Space scrape error:', error);
+    console.error('❌ Space scrape error:', error);
     res.status(500).json({ error: 'Failed to scrape Space' });
   }
 });

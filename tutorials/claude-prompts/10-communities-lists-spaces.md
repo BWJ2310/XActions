@@ -112,6 +112,8 @@ Walk me through `src/listManager.js` in detail:
 
 ### Part 5: Spaces Discovery & Management
 
+> **Want AI agents that join and speak in Spaces autonomously?** See [Tutorial 23: Autonomous Space Agent](23-autonomous-space-agent.md) for full voice agent setup with `x_space_join`, LLM providers, TTS configuration, and multi-agent debates.
+
 Use Spaces tools to find live conversations:
 
 1. **Find live Spaces** using `x_get_spaces`:

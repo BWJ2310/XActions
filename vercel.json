@@ -8,9 +8,21 @@
     {
       "src": "dashboard/**",
       "use": "@vercel/static"
+    },
+    {
+      "src": "public/**",
+      "use": "@vercel/static"
     }
   ],
   "routes": [
+    {
+      "src": "/icon-192.png",
+      "dest": "/public/icon-192.png"
+    },
+    {
+      "src": "/icon-512.png",
+      "dest": "/public/icon-512.png"
+    },
     {
       "src": "/dashboard",
       "dest": "/site/index.html"

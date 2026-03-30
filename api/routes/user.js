@@ -34,7 +34,7 @@ router.get('/profile', async (req, res) => {
       recentOperations: user.operations
     });
   } catch (error) {
-    console.error('Profile fetch error:', error);
+    console.error('❌ Profile fetch error:', error);
     res.status(500).json({ error: 'Failed to fetch profile' });
   }
 });
@@ -70,7 +70,7 @@ router.patch('/profile', async (req, res) => {
       plan: 'free_unlimited'
     });
   } catch (error) {
-    console.error('Profile update error:', error);
+    console.error('❌ Profile update error:', error);
     res.status(500).json({ error: 'Failed to update profile' });
   }
 });
@@ -97,7 +97,7 @@ router.get('/stats', async (req, res) => {
 
     res.json(stats);
   } catch (error) {
-    console.error('Stats fetch error:', error);
+    console.error('❌ Stats fetch error:', error);
     res.status(500).json({ error: 'Failed to fetch statistics' });
   }
 });
@@ -132,7 +132,7 @@ router.get('/operations', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Operations fetch error:', error);
+    console.error('❌ Operations fetch error:', error);
     res.status(500).json({ error: 'Failed to fetch operations' });
   }
 });
@@ -146,7 +146,7 @@ router.delete('/account', async (req, res) => {
 
     res.json({ message: 'Account deleted successfully' });
   } catch (error) {
-    console.error('Account deletion error:', error);
+    console.error('❌ Account deletion error:', error);
     res.status(500).json({ error: 'Failed to delete account' });
   }
 });

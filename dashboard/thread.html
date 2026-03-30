@@ -789,8 +789,14 @@
         });
 
         if (!res.ok) {
-          const err = await res.json();
-          throw new Error(err.message || err.error || 'Failed to unroll thread');
+          let msg = 'Failed to unroll thread';
+          try {
+            const err = await res.json();
+            msg = err.message || err.error || msg;
+          } catch {
+            if (res.status === 404) msg = 'Thread API is temporarily unavailable. Please try again later.';
+          }
+          throw new Error(msg);
         }
 
         currentThread = await res.json();
