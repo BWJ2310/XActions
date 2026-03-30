@@ -490,7 +490,7 @@
       <p style="color: var(--text-secondary); margin-bottom: 16px;">Don't want to use browser scripts? Run operations from our dashboard with your session cookie.</p>
       <div style="display: flex; gap: 12px; flex-wrap: wrap;">
         <a href="/dashboard" class="server-btn">📊 Open Dashboard</a>
-        <a href="/tutorials/unfollow.html#session-cookie" class="server-btn secondary">🔑 How to Get Session Cookie</a>
+        <a href="/tutorials/unfollow#session-cookie" class="server-btn secondary">🔑 How to Get Session Cookie</a>
       </div>
       <style>
         .server-btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 24px; background: var(--accent); color: white; text-decoration: none; border-radius: 9999px; font-weight: 600; transition: all 0.2s; }
@@ -554,7 +554,7 @@
             <a class="bookmarklet" href="javascript:(function(){const $unfollow='[data-testid$=%22-unfollow%22]',confirmBtn='[data-testid=%22confirmationSheetConfirm%22]',sleep=ms=>new Promise(r=>setTimeout(r,ms));let count=0;async function run(){while(true){const btn=document.querySelector($unfollow);if(!btn){console.log('✅ Done! Unfollowed:',count);return}btn.click();await sleep(500);document.querySelector(confirmBtn)?.click();count++;console.log('Unfollowed:',count);await sleep(1500);window.scrollBy(0,200)}}run()})();">⚡ Unfollow All</a>
             <button class="copy-btn" data-script="unfollowEveryone">📋 Copy Script</button>
           </div>
-          <a href="tutorials/unfollow.html" class="tutorial-link">📚 Full Tutorial →</a>
+          <a href="/tutorials/unfollow" class="tutorial-link">📚 Full Tutorial →</a>
         </div>
 
         <!-- Unfollow Non-Followers -->
@@ -569,7 +569,7 @@
             <a class="bookmarklet" href="javascript:(function(){const $unfollow='[data-testid$=%22-unfollow%22]',confirmBtn='[data-testid=%22confirmationSheetConfirm%22]',indicator='[data-testid=%22userFollowIndicator%22]',sleep=ms=>new Promise(r=>setTimeout(r,ms));let count=0;async function run(){while(true){const cells=document.querySelectorAll('[data-testid=%22UserCell%22]');let found=false;for(const cell of cells){const followsYou=cell.querySelector(indicator);const unfollowBtn=cell.querySelector($unfollow);if(!followsYou&&unfollowBtn){unfollowBtn.click();await sleep(500);document.querySelector(confirmBtn)?.click();count++;console.log('Unfollowed:',count);await sleep(1500);found=true;break}}if(!found){window.scrollBy(0,500);await sleep(1000);if(!document.querySelector('[data-testid=%22UserCell%22]')){console.log('✅ Done! Unfollowed:',count);return}}}}run()})();">⚡ Unfollow Non-Followers</a>
             <button class="copy-btn" data-script="unfollowNonFollowers">📋 Copy Script</button>
           </div>
-          <a href="tutorials/unfollow.html#non-followers" class="tutorial-link">📚 Full Tutorial →</a>
+          <a href="/tutorials/unfollow#non-followers" class="tutorial-link">📚 Full Tutorial →</a>
         </div>
       </div>
     </section>
