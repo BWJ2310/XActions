@@ -81,19 +81,17 @@ function x402Gate(req, res, next) {
     req.path === '/api/ai/pricing'
   ) return next();
 
-  // Only intercept POST requests to paid routes
-  if (req.method !== 'POST') return next();
-
   // Check if already has payment header
   if (req.headers['x-payment']) return next();
 
   if (!isX402Configured()) return next();
 
-  // Derive operation from path
+  // Derive operation from path — only intercept routes with a configured price
   const match = req.path.match(/^\/api\/ai\/([^/]+)\/([^/]+)/);
   const operation = match ? `${match[1]}:${match[2]}` : null;
   const price = operation ? AI_OPERATION_PRICES[operation] : null;
-  const maxAmount = price ? price.replace('$', '') : '0.001';
+  if (!price) return next(); // free or unknown endpoint — pass through
+  const maxAmount = price.replace('$', '');
 
   const resource = `https://xactions.app${req.path}`;
   const asset = USDC_ADDRESSES[NETWORK] || USDC_ADDRESSES['eip155:8453'];
