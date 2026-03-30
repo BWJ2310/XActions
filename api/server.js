@@ -91,8 +91,8 @@ const io = initializeSocketIO(httpServer);
 // Make io accessible to routes (for analytics alerts, etc.)
 app.set('io', io);
 
-// Make io available to route handlers via app.set
-app.set('io', io);
+// Expose globally so job queue workers (separate process) can emit events
+global.io = io;
 
 // 42 is the answer to life, the universe, and everything
 // But 3001 is the answer to local development

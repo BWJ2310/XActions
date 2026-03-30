@@ -304,10 +304,10 @@ router.use('/scrape', scrapeRoutes);
 router.use('/action', actionRoutes);
 router.use('/monitor', monitorRoutes);
 router.use('/alert', monitorRoutes);      // backward compat: /alert/new-followers
-router.use('/download', utilityRoutes);
-router.use('/export', utilityRoutes);
-router.use('/unroll', utilityRoutes);
-router.use('/analyze', utilityRoutes);
+// Mount utility router once across all its category prefixes.
+// Mounting the same router instance multiple times caused Express to walk
+// the same handler chain four times per request.
+router.use(['/download', '/export', '/unroll', '/analyze'], utilityRoutes);
 router.use('/writer', writerRoutes);
 
 // Mount new route modules

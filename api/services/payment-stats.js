@@ -16,6 +16,10 @@ const stats = {
   recentPayments: [] // last 100
 };
 
+// Dedup set — prevents double-counting when both x402.js onAfterSettle
+// and webhooks.js record the same payment by txHash.
+const seenTxHashes = new Set();
+
 /**
  * Record a successful payment
  * @param {Object} payment - Payment details
@@ -25,6 +29,19 @@ const stats = {
  * @param {string} [payment.network] - Blockchain network
  */
 export function recordPayment(payment) {
+  const txKey = payment.paymentId || payment.txHash || null;
+  if (txKey) {
+    if (seenTxHashes.has(txKey)) {
+      console.log(`⚠️  Duplicate payment ignored: ${txKey}`);
+      return;
+    }
+    seenTxHashes.add(txKey);
+    // Keep the Set bounded to the last 10 000 transactions
+    if (seenTxHashes.size > 10_000) {
+      seenTxHashes.delete(seenTxHashes.values().next().value);
+    }
+  }
+
   stats.totalPayments++;
   stats.totalRevenue += parseFloat(payment.price.replace('$', '')) * 100;
   
@@ -66,6 +83,7 @@ export function resetStats() {
   stats.byOperation = {};
   stats.byHour = {};
   stats.recentPayments = [];
+  seenTxHashes.clear();
 }
 
 export default { recordPayment, getStats, resetStats };
