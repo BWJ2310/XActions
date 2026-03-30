@@ -165,8 +165,8 @@ describe('extractUserFromCell', () => {
       expect(result.bio).toBe('Passionate about machine learning and open source contributions');
     });
 
-    it('reports _meta.bioStrategy as fallback', () => {
-      expect(result._meta.bioStrategy).toBe('fallback');
+    it('reports _meta.bioStrategy as dir-auto', () => {
+      expect(result._meta.bioStrategy).toBe('dir-auto');
     });
   });
 
@@ -192,8 +192,8 @@ describe('extractUserFromCell', () => {
       expect(result.bio).toContain('strategy three');
     });
 
-    it('reports fallback strategy', () => {
-      expect(result._meta.bioStrategy).toBe('fallback');
+    it('reports dir-auto strategy', () => {
+      expect(result._meta.bioStrategy).toBe('dir-auto');
     });
   });
 
@@ -218,8 +218,8 @@ describe('extractUserFromCell', () => {
       expect(result.bio).toContain('longer biography');
     });
 
-    it('reports fallback strategy', () => {
-      expect(result._meta.bioStrategy).toBe('fallback');
+    it('reports span-scan strategy', () => {
+      expect(result._meta.bioStrategy).toBe('span-scan');
     });
   });
 
@@ -438,12 +438,12 @@ describe('extractUserFromCell', () => {
       expect(extractUserFromCell(cell)._meta.bioStrategy).toBe('testid');
     });
 
-    it('bioStrategy is "fallback" when bio found by other strategy', () => {
+    it('bioStrategy is "dir-auto" when bio found by dir="auto" strategy', () => {
       const cell = createCell(`
         <a href="/user"></a>
         <div dir="auto">A long fallback bio that has more than ten characters</div>
       `);
-      expect(extractUserFromCell(cell)._meta.bioStrategy).toBe('fallback');
+      expect(extractUserFromCell(cell)._meta.bioStrategy).toBe('dir-auto');
     });
 
     it('bioStrategy is "none" when no bio found', () => {
@@ -460,11 +460,11 @@ describe('extractUserFromCell', () => {
       expect(extractUserFromCell(cell)._meta.nameStrategy).toBe('testid');
     });
 
-    it('nameStrategy is "fallback" when display name found another way', () => {
+    it('nameStrategy is "dir-ltr" when display name found via dir="ltr"', () => {
       const cell = createCell(`
         <a href="/user"><div dir="ltr"><span>Name Via LTR</span></div></a>
       `);
-      expect(extractUserFromCell(cell)._meta.nameStrategy).toBe('fallback');
+      expect(extractUserFromCell(cell)._meta.nameStrategy).toBe('dir-ltr');
     });
 
     it('nameStrategy is "none" when no display name resolved at all', () => {

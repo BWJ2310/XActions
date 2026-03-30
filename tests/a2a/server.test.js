@@ -32,7 +32,7 @@ describe('GET /.well-known/agent.json', () => {
     const card = await res.json();
     expect(card.name).toContain('XActions');
     expect(card.url).toBeDefined();
-    expect(card.version).toBe('1.0.0');
+    expect(card.version).toBe('3.1.0');
     expect(Array.isArray(card.skills)).toBe(true);
   });
 });

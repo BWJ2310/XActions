@@ -19,7 +19,7 @@ describe('generateAgentCard', () => {
     const card = generateAgentCard({ url: 'http://localhost:3100' });
     expect(card.name).toBe('XActions Agent');
     expect(card.url).toBe('http://localhost:3100');
-    expect(card.version).toBe('1.0.0');
+    expect(card.version).toBe('3.1.0');
     expect(card.provider).toBeDefined();
     expect(card.provider.organization).toContain('XActions');
     expect(Array.isArray(card.skills)).toBe(true);

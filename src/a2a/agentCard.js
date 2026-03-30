@@ -46,7 +46,10 @@ const _remoteCardCache = new Map(); // agentUrl → { card, fetchedAt }
  */
 export function generateAgentCard(options = {}) {
   const {
-    baseUrl = 'http://localhost:3100',
+    url: baseUrl = 'http://localhost:3100',
+    name: customName,
+    description: customDescription,
+    capabilities: capabilityOverrides,
     enableStreaming = true,
     enablePush = true,
     authSchemes = ['bearer'],
@@ -64,16 +67,20 @@ export function generateAgentCard(options = {}) {
     }
   }
 
+  const defaultCapabilities = {
+    streaming: enableStreaming,
+    pushNotifications: enablePush,
+    stateTransitionHistory: true,
+  };
+
   const card = createAgentCard({
-    name: 'XActions Agent',
-    description: 'The Complete X/Twitter Automation Toolkit — scraping, posting, analytics, growth automation, multi-platform support. No API fees.',
+    name: customName || 'XActions Agent',
+    description: customDescription || 'The Complete X/Twitter Automation Toolkit — scraping, posting, analytics, growth automation, multi-platform support. No API fees.',
     url: baseUrl,
     version: XACTIONS_VERSION,
-    capabilities: {
-      streaming: enableStreaming,
-      pushNotifications: enablePush,
-      stateTransitionHistory: true,
-    },
+    capabilities: capabilityOverrides
+      ? { ...defaultCapabilities, ...capabilityOverrides }
+      : defaultCapabilities,
     skills,
     authentication: {
       schemes: authSchemes,
@@ -155,12 +162,14 @@ export function generateMinimalCard(fullCard) {
  * @returns {object} Diff { added, removed, changed }
  */
 export function diffCards(cardA, cardB) {
-  const diff = { added: [], removed: [], changed: [] };
+  const changes = [];
+  const added = [];
+  const removed = [];
 
   // Compare top-level fields
   for (const key of ['name', 'description', 'url', 'version']) {
     if (cardA[key] !== cardB[key]) {
-      diff.changed.push({ field: key, from: cardA[key], to: cardB[key] });
+      changes.push(`${key}: "${cardA[key]}" → "${cardB[key]}"`);
     }
   }
 
@@ -169,26 +178,23 @@ export function diffCards(cardA, cardB) {
   const skillsB = new Map((cardB.skills || []).map(s => [s.id, s]));
 
   for (const [id] of skillsB) {
-    if (!skillsA.has(id)) diff.added.push(id);
+    if (!skillsA.has(id)) added.push(id);
   }
   for (const [id] of skillsA) {
-    if (!skillsB.has(id)) diff.removed.push(id);
+    if (!skillsB.has(id)) removed.push(id);
   }
 
   // Compare capabilities
   if (cardA.capabilities && cardB.capabilities) {
     for (const cap of ['streaming', 'pushNotifications', 'stateTransitionHistory']) {
       if (cardA.capabilities[cap] !== cardB.capabilities[cap]) {
-        diff.changed.push({
-          field: `capabilities.${cap}`,
-          from: cardA.capabilities[cap],
-          to: cardB.capabilities[cap],
-        });
+        changes.push(`capabilities.${cap}: ${cardA.capabilities[cap]} → ${cardB.capabilities[cap]}`);
       }
     }
   }
 
-  return diff;
+  const hasChanges = changes.length > 0 || added.length > 0 || removed.length > 0;
+  return { changed: hasChanges, changes, added, removed };
 }
 
 /**

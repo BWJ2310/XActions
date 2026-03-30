@@ -19,7 +19,7 @@ import { applyAuth } from './auth.js';
 const DECOMPOSITION_PATTERNS = [
   // "analyze X and post/tweet about it"
   {
-    pattern: /(?:analyze|study|research)\s+@?(\w+)(?:'?s?)?\s+.+?\s+(?:and|then)\s+(?:post|tweet|publish)\s+(.+)/i,
+    pattern: /(?:analyze|study|research)\s+@?(\w+)(?:'?s?)?(?:\s+.+?)?\s+(?:and|then)\s+(?:post|tweet|publish)\s+(.+)/i,
     decompose: (m) => [
       { skill: 'xactions.x_get_profile', params: { username: m[1] }, label: `Get profile: @${m[1]}` },
       { skill: 'xactions.x_get_tweets', params: { username: m[1], count: 100 }, label: `Get tweets: @${m[1]}` },

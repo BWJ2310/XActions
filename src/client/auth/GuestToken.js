@@ -88,6 +88,9 @@ export class GuestToken {
     }
 
     const data = await response.json();
+    if (!data.guest_token) {
+      throw new Error('No guest_token in activation response');
+    }
     this._token = data.guest_token;
     this._activatedAt = Date.now();
     return this._token;

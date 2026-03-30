@@ -35,6 +35,7 @@ const NL_PATTERNS = [
 
   // Posting
   { pattern: /(?:post|send|publish|write)\s+(?:a\s+)?tweet\s+(?:saying|with|that\s+says)\s+['"](.+?)['"]/i, tool: 'x_post_tweet', extract: (m) => ({ text: m[1] }) },
+  { pattern: /(?:post|send|publish|write)\s+(?:a\s+)?tweet\s+(?:saying|with|that\s+says)\s+(.+)$/i, tool: 'x_post_tweet', extract: (m) => ({ text: m[1].trim() }) },
   { pattern: /(?:tweet|post)\s+['"](.+?)['"]/i, tool: 'x_post_tweet', extract: (m) => ({ text: m[1] }) },
 
   // Thread
@@ -57,7 +58,7 @@ const NL_PATTERNS = [
   { pattern: /(?:best|optimal)\s+time\s+to\s+post/i, tool: 'x_best_time_to_post', extract: () => ({}) },
 
   // Trends / Explore
-  { pattern: /(?:get|show|what'?s?)\s+(?:the\s+)?(?:trending|trends)/i, tool: 'x_get_trends', extract: () => ({}) },
+  { pattern: /(?:get|show|what'?s?)\s+(?:\w+\s+)?(?:the\s+)?(?:trending|trends)/i, tool: 'x_get_trends', extract: () => ({}) },
 
   // DMs
   { pattern: /(?:send|dm)\s+(?:a\s+)?(?:dm|message|direct\s+message)\s+to\s+@?(\w+)\s+(?:saying|with)\s+['"](.+?)['"]/i, tool: 'x_send_dm', extract: (m) => ({ username: m[1], message: m[2] }) },
@@ -323,6 +324,20 @@ export function createBridge(options = {}) {
 
       for (let i = 0; i < tasks.length; i++) {
         const task = tasks[i];
+
+        // Support A2A task format { skillId, inputParts } by delegating to execute()
+        if (task.inputParts) {
+          const execResult = await bridge.execute(task.skillId || null, task.inputParts);
+          results.push(execResult);
+          if (execResult.artifacts) allArtifacts.push(...execResult.artifacts);
+          if (!execResult.success) {
+            errors.push(`Step ${i + 1}: ${execResult.error}`);
+            if (stopOnError) break;
+          }
+          continue;
+        }
+
+        // Legacy format { tool, params }
         // Resolve $stepN references in params
         const resolvedParams = bridge._resolveStepRefs(task.params || {}, context);
 
@@ -338,7 +353,7 @@ export function createBridge(options = {}) {
         }
       }
 
-      return { results, artifacts: allArtifacts, errors };
+      return results;
     },
 
     /**

@@ -35,6 +35,7 @@
     "xactions-agent": "./src/agents/thoughtLeaderAgent.js"
   },
   "scripts": {
+    "vercel-build": "prisma generate",
     "dev": "NODE_ENV=development nodemon api/server.js",
     "start": "NODE_ENV=production node api/server.js",
     "cli": "node src/cli/index.js",

@@ -280,23 +280,23 @@ export function isValidTransition(from, to) {
 /**
  * Build a JSON-RPC 2.0 success response.
  *
- * @param {*} result
  * @param {string|number} id - Request ID
+ * @param {*} result
  * @returns {object}
  */
-export function jsonRpcSuccess(result, id) {
+export function jsonRpcSuccess(id, result) {
   return { jsonrpc: '2.0', result, id };
 }
 
 /**
  * Build a JSON-RPC 2.0 error response.
  *
+ * @param {string|number} [id=null] - Request ID
  * @param {number} code
  * @param {string} message
  * @param {*} [data]
- * @param {string|number} [id=null]
  * @returns {object}
  */
-export function jsonRpcError(code, message, data, id = null) {
+export function jsonRpcError(id, code, message, data) {
   return { jsonrpc: '2.0', error: { code, message, data }, id };
 }

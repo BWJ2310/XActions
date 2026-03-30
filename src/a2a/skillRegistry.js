@@ -233,7 +233,8 @@ export function convertMcpToolToA2aSkill(tool) {
 
   return {
     id,
-    name: displayName,
+    name: tool.name,
+    displayName,
     description: tool.description || '',
     tags,
     inputSchema: tool.inputSchema || { type: 'object', properties: {} },
@@ -297,42 +298,44 @@ function ensureInitialized() {
 }
 
 /**
- * Get skill categories with their member skills.
+ * Get skill categories as an array of category names.
  *
- * @returns {Record<string, object[]>}
+ * @returns {string[]}
  */
 export function getSkillCategories() {
   ensureInitialized();
-  const categories = {};
-  for (const [cat] of Object.entries(CATEGORY_PATTERNS)) {
-    categories[cat] = [];
-  }
-  categories['other'] = [];
+  const categorySet = new Set();
   for (const skill of _skills.values()) {
-    let placed = false;
-    // Use the tool name (strip xactions. prefix) for categorization
     const toolName = skill.id.replace('xactions.', '');
     for (const [cat, pattern] of Object.entries(CATEGORY_PATTERNS)) {
       if (pattern.test(toolName)) {
-        categories[cat].push(skill);
-        placed = true;
+        categorySet.add(cat);
         break;
       }
     }
-    if (!placed) categories['other'].push(skill);
   }
-  return categories;
+  return Array.from(categorySet);
 }
 
 /**
  * Search skills by query text and/or tags.
  *
- * @param {string} [query=''] - Text to search in skill name/description
- * @param {string[]} [tags=[]] - Tags to filter by (OR matching)
+ * @param {string|object} [queryOrOpts=''] - Text to search, or options { query, category, tags }
+ * @param {string[]} [tagsArg=[]] - Tags to filter by (OR matching)
  * @returns {object[]} Matching skills
  */
-export function searchSkills(query = '', tags = []) {
+export function searchSkills(queryOrOpts = '', tagsArg = []) {
   ensureInitialized();
+  let query = '';
+  let category = null;
+  let tags = tagsArg;
+  if (typeof queryOrOpts === 'object' && queryOrOpts !== null) {
+    query = queryOrOpts.query || '';
+    category = queryOrOpts.category || null;
+    tags = queryOrOpts.tags || tags;
+  } else {
+    query = queryOrOpts || '';
+  }
   const q = query.toLowerCase();
   const results = [];
   for (const skill of _skills.values()) {
@@ -344,10 +347,17 @@ export function searchSkills(query = '', tags = []) {
     )) {
       match = true;
     }
+    if (category) {
+      const toolName = skill.id.replace('xactions.', '');
+      const pattern = CATEGORY_PATTERNS[category];
+      if (pattern && pattern.test(toolName)) {
+        match = true;
+      }
+    }
     if (tags.length > 0 && tags.some(t => skill.tags.includes(t))) {
       match = true;
     }
-    if (!q && tags.length === 0) match = true;
+    if (!q && !category && tags.length === 0) match = true;
     if (match) results.push(skill);
   }
   return results;
@@ -361,7 +371,7 @@ export function searchSkills(query = '', tags = []) {
  */
 export function getSkillById(skillId) {
   ensureInitialized();
-  return _skills.get(skillId) || null;
+  return _skills.get(skillId);
 }
 
 /**
@@ -377,9 +387,9 @@ export function getAllSkills() {
 /**
  * Re-scan MCP tools and plugins to rebuild the skill list.
  *
- * @returns {number} New skill count
+ * @returns {Promise<number>} New skill count
  */
-export function refreshSkills() {
+export async function refreshSkills() {
   _initialized = false;
   _skills = null;
   ensureInitialized();

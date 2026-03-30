@@ -2,6 +2,10 @@
   "version": 2,
   "builds": [
     {
+      "src": "api/serverless.js",
+      "use": "@vercel/node"
+    },
+    {
       "src": "site/**",
       "use": "@vercel/static"
     },
@@ -37,7 +41,7 @@
     },
     {
       "src": "/api/(.*)",
-      "dest": "https://xactions-api.up.railway.app/api/$1"
+      "dest": "/api/serverless.js"
     },
     {
       "src": "/tutorials/unfollow(.html)?",

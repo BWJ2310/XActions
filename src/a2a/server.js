@@ -178,7 +178,7 @@ export function createA2AServer(options = {}) {
 
   // ------- Health endpoint -------
   app.get('/a2a/health', (req, res) => {
-    const stats = taskStore.stats();
+    const stats = taskStore.getStats();
     res.json({
       status: 'healthy',
       agent: 'XActions A2A Agent',
@@ -194,7 +194,7 @@ export function createA2AServer(options = {}) {
     const { q, category, limit } = req.query;
     let skills;
     if (q || category) {
-      skills = searchSkills({ query: q, category });
+      skills = searchSkills(q || '', category ? [category] : []);
     } else {
       skills = getAllSkills();
     }
@@ -221,7 +221,7 @@ export function createA2AServer(options = {}) {
     }
 
     try {
-      const task = taskStore.create({ message: params.message, metadata: params.metadata });
+      const task = await taskStore.create({ message: params.message, metadata: params.metadata });
 
       // Subscribe for push notifications if callback provided
       if (params.pushNotification?.url) {
@@ -237,7 +237,7 @@ export function createA2AServer(options = {}) {
       } else {
         // Execute and wait — return completed task
         await executor.execute(task.id);
-        const final = taskStore.get(task.id);
+        const final = await taskStore.get(task.id);
         res.json(jsonRpcSuccess(id, final));
       }
     } catch (err) {
@@ -247,8 +247,8 @@ export function createA2AServer(options = {}) {
   });
 
   // ------- Get task -------
-  app.get('/a2a/tasks/:taskId', (req, res) => {
-    const task = taskStore.get(req.params.taskId);
+  app.get('/a2a/tasks/:taskId', async (req, res) => {
+    const task = await taskStore.get(req.params.taskId);
     if (!task) {
       return res.status(404).json(jsonRpcError(null, ERROR_CODES.TASK_NOT_FOUND, 'Task not found'));
     }
@@ -256,15 +256,15 @@ export function createA2AServer(options = {}) {
   });
 
   // ------- Cancel task -------
-  app.post('/a2a/tasks/:taskId/cancel', (req, res) => {
-    const task = taskStore.get(req.params.taskId);
+  app.post('/a2a/tasks/:taskId/cancel', async (req, res) => {
+    const task = await taskStore.get(req.params.taskId);
     if (!task) {
       return res.status(404).json(jsonRpcError(null, ERROR_CODES.TASK_NOT_FOUND, 'Task not found'));
     }
 
     try {
-      taskStore.transition(req.params.taskId, 'canceled');
-      const updated = taskStore.get(req.params.taskId);
+      await taskStore.transition(req.params.taskId, 'canceled');
+      const updated = await taskStore.get(req.params.taskId);
       res.json(jsonRpcSuccess(null, updated));
     } catch (err) {
       res.status(400).json(jsonRpcError(null, ERROR_CODES.INVALID_REQUEST, err.message));
@@ -275,9 +275,9 @@ export function createA2AServer(options = {}) {
   attachStreamEndpoint(app, streamManager);
 
   // ------- Push notification callback -------
-  app.post('/a2a/tasks/:taskId/message', (req, res) => {
+  app.post('/a2a/tasks/:taskId/message', async (req, res) => {
     const { taskId } = req.params;
-    const task = taskStore.get(taskId);
+    const task = await taskStore.get(taskId);
     if (!task) {
       return res.status(404).json(jsonRpcError(null, ERROR_CODES.TASK_NOT_FOUND, 'Task not found'));
     }

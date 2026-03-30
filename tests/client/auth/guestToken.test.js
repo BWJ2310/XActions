@@ -163,7 +163,7 @@ describe('GuestToken', () => {
       });
 
       const gt = createGuestToken();
-      await expect(gt.activate()).rejects.toThrow(/Failed to activate guest token/);
+      await expect(gt.activate()).rejects.toThrow(/Guest token activation failed/);
     });
 
     it('retries once on 429 with Retry-After header', async () => {
