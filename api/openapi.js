@@ -46,6 +46,21 @@ function paymentInfo(operation) {
 }
 
 /**
+ * Build the x-bazaar extension for an operation.
+ * Provides explicit input/output schemas for agent discovery tools.
+ */
+function bazaarExt(inputSchema, outputRef = '#/components/schemas/SuccessResponse') {
+  return {
+    schema: {
+      properties: {
+        input: inputSchema,
+        output: { $ref: outputRef },
+      },
+    },
+  };
+}
+
+/**
  * Helper — standard error schema ref
  */
 const errorRef = { $ref: '#/components/schemas/Error' };
@@ -69,12 +84,243 @@ function ok200(description) {
 }
 
 /**
+ * Helper — async operation 200 response
+ */
+function ok200Async(description) {
+  return {
+    description,
+    content: { 'application/json': { schema: { $ref: '#/components/schemas/AsyncOperationResponse' } } },
+  };
+}
+
+/**
  * Helper — session body property
  */
 const sessionProp = {
   sessionCookie: {
     type: 'string',
     description: 'X/Twitter auth_token cookie value',
+  },
+};
+
+// ── Per-operation input schemas (shared between requestBody and x-bazaar) ──────
+
+const S = {
+  scrapeProfile: {
+    type: 'object',
+    required: ['username'],
+    properties: {
+      ...sessionProp,
+      username: { type: 'string', example: 'elonmusk' },
+    },
+  },
+  scrapeFollowers: {
+    type: 'object',
+    required: ['username'],
+    properties: {
+      ...sessionProp,
+      username: { type: 'string', example: 'elonmusk' },
+      limit: { type: 'integer', default: 100, maximum: 1000 },
+    },
+  },
+  scrapeFollowing: {
+    type: 'object',
+    required: ['username'],
+    properties: {
+      ...sessionProp,
+      username: { type: 'string', example: 'elonmusk' },
+      limit: { type: 'integer', default: 100, maximum: 1000 },
+    },
+  },
+  scrapeTweets: {
+    type: 'object',
+    required: ['username'],
+    properties: {
+      ...sessionProp,
+      username: { type: 'string', example: 'elonmusk' },
+      limit: { type: 'integer', default: 50, maximum: 200 },
+    },
+  },
+  scrapeThread: {
+    type: 'object',
+    required: ['tweetId'],
+    properties: {
+      ...sessionProp,
+      tweetId: { type: 'string', example: '1234567890' },
+      tweetUrl: { type: 'string' },
+    },
+  },
+  scrapeSearch: {
+    type: 'object',
+    required: ['query'],
+    properties: {
+      ...sessionProp,
+      query: { type: 'string', example: 'bitcoin' },
+      limit: { type: 'integer', default: 50 },
+    },
+  },
+  scrapeHashtag: {
+    type: 'object',
+    required: ['hashtag'],
+    properties: {
+      ...sessionProp,
+      hashtag: { type: 'string', example: 'AI' },
+      limit: { type: 'integer', default: 50 },
+    },
+  },
+  scrapeMedia: {
+    type: 'object',
+    required: ['username'],
+    properties: {
+      ...sessionProp,
+      username: { type: 'string', example: 'elonmusk' },
+      limit: { type: 'integer', default: 50 },
+    },
+  },
+  actionUnfollowNonFollowers: {
+    type: 'object',
+    properties: {
+      ...sessionProp,
+      maxUnfollows: { type: 'integer', default: 100, maximum: 500 },
+      dryRun: { type: 'boolean', default: false },
+      excludeUsernames: { type: 'array', items: { type: 'string' } },
+      excludeVerified: { type: 'boolean', default: false },
+      delayMs: { type: 'integer', default: 2000, minimum: 1000 },
+    },
+  },
+  actionUnfollowEveryone: {
+    type: 'object',
+    properties: {
+      ...sessionProp,
+      dryRun: { type: 'boolean', default: false },
+      delayMs: { type: 'integer', default: 2000, minimum: 1000 },
+    },
+  },
+  actionDetectUnfollowers: {
+    type: 'object',
+    properties: {
+      ...sessionProp,
+      username: { type: 'string' },
+    },
+  },
+  actionAutoLike: {
+    type: 'object',
+    required: ['keywords'],
+    properties: {
+      ...sessionProp,
+      keywords: { type: 'array', items: { type: 'string' } },
+      limit: { type: 'integer', default: 50 },
+    },
+  },
+  actionFollowEngagers: {
+    type: 'object',
+    required: ['tweetId'],
+    properties: {
+      ...sessionProp,
+      tweetId: { type: 'string' },
+      limit: { type: 'integer', default: 50 },
+    },
+  },
+  actionKeywordFollow: {
+    type: 'object',
+    required: ['keyword'],
+    properties: {
+      ...sessionProp,
+      keyword: { type: 'string' },
+      limit: { type: 'integer', default: 50 },
+    },
+  },
+  monitorAccount: {
+    type: 'object',
+    required: ['username'],
+    properties: {
+      ...sessionProp,
+      username: { type: 'string' },
+      includeFollowers: { type: 'boolean', default: true },
+      includeFollowing: { type: 'boolean', default: true },
+      includeStats: { type: 'boolean', default: true },
+    },
+  },
+  monitorFollowers: {
+    type: 'object',
+    required: ['username'],
+    properties: { ...sessionProp, username: { type: 'string' } },
+  },
+  alertNewFollowers: {
+    type: 'object',
+    required: ['username'],
+    properties: { ...sessionProp, username: { type: 'string' } },
+  },
+  downloadVideo: {
+    type: 'object',
+    properties: {
+      ...sessionProp,
+      tweetUrl: { type: 'string', example: 'https://x.com/elonmusk/status/1234567890' },
+      tweetId: { type: 'string' },
+      quality: { type: 'string', enum: ['highest', 'lowest', 'all'], default: 'highest' },
+    },
+  },
+  exportBookmarks: {
+    type: 'object',
+    properties: {
+      ...sessionProp,
+      format: { type: 'string', enum: ['json', 'csv'], default: 'json' },
+    },
+  },
+  unrollThread: {
+    type: 'object',
+    properties: {
+      ...sessionProp,
+      tweetUrl: { type: 'string' },
+      tweetId: { type: 'string' },
+    },
+  },
+  writerAnalyzeVoice: {
+    type: 'object',
+    required: ['username', 'authToken'],
+    properties: {
+      username: { type: 'string' },
+      authToken: { type: 'string', description: 'X/Twitter auth_token cookie' },
+      tweetLimit: { type: 'integer', default: 200 },
+    },
+  },
+  writerGenerate: {
+    type: 'object',
+    required: ['username', 'topic'],
+    properties: {
+      username: { type: 'string' },
+      topic: { type: 'string' },
+      count: { type: 'integer', default: 5 },
+      style: { type: 'string', enum: ['casual', 'professional', 'provocative', 'educational'] },
+    },
+  },
+  writerRewrite: {
+    type: 'object',
+    required: ['tweet'],
+    properties: {
+      tweet: { type: 'string' },
+      goal: { type: 'string', enum: ['engagement', 'clarity', 'humor', 'professionalism'] },
+      voiceUsername: { type: 'string' },
+    },
+  },
+  writerCalendar: {
+    type: 'object',
+    required: ['username'],
+    properties: {
+      username: { type: 'string' },
+      niche: { type: 'string' },
+      tweetsPerDay: { type: 'integer', default: 3 },
+    },
+  },
+  writerReply: {
+    type: 'object',
+    required: ['tweetText'],
+    properties: {
+      tweetText: { type: 'string' },
+      tweetUrl: { type: 'string' },
+      voiceUsername: { type: 'string' },
+      tone: { type: 'string' },
+    },
   },
 };
 
@@ -223,56 +469,19 @@ Free alternatives: Browser scripts, CLI, and Node.js library at https://xactions
 
     // ── Paths ──────────────────────────────────────────────────────
     paths: {
-      // ─── Free endpoints ──────────────────────────────────────────
-      '/api/ai/': {
-        get: {
-          tags: ['Info'],
-          summary: 'API documentation',
-          description: 'Returns available endpoints, pricing, and usage info.',
-          security: [],
-          responses: { 200: { description: 'API documentation object' } },
-        },
-      },
-      '/api/ai/health': {
-        get: {
-          tags: ['Info'],
-          summary: 'Health check and x402 configuration',
-          security: [],
-          responses: { 200: { description: 'Health status and payment config' } },
-        },
-      },
-      '/api/ai/pricing': {
-        get: {
-          tags: ['Info'],
-          summary: 'Pricing for all operations',
-          security: [],
-          responses: { 200: { description: 'Pricing table' } },
-        },
-      },
-
       // ─── Scraping ────────────────────────────────────────────────
       '/api/ai/scrape/profile': {
         post: {
           tags: ['Scraping'],
           summary: 'Get profile information',
           'x-payment-info': paymentInfo('scrape:profile'),
+          'x-bazaar': bazaarExt(S.scrapeProfile),
           requestBody: {
             required: true,
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  required: ['username'],
-                  properties: {
-                    ...sessionProp,
-                    username: { type: 'string', example: 'elonmusk' },
-                  },
-                },
-              },
-            },
+            content: { 'application/json': { schema: S.scrapeProfile } },
           },
           responses: {
-            200: { description: 'Profile data', content: { 'application/json': { schema: { $ref: '#/components/schemas/SuccessResponse' } } } },
+            200: ok200('Profile data'),
             402: payment402,
             400: { description: 'Missing parameters', content: { 'application/json': { schema: errorRef } } },
           },
@@ -283,21 +492,10 @@ Free alternatives: Browser scripts, CLI, and Node.js library at https://xactions
           tags: ['Scraping'],
           summary: 'List followers (up to 1 000)',
           'x-payment-info': paymentInfo('scrape:followers'),
+          'x-bazaar': bazaarExt(S.scrapeFollowers),
           requestBody: {
             required: true,
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  required: ['username'],
-                  properties: {
-                    ...sessionProp,
-                    username: { type: 'string', example: 'elonmusk' },
-                    limit: { type: 'integer', default: 100, maximum: 1000 },
-                  },
-                },
-              },
-            },
+            content: { 'application/json': { schema: S.scrapeFollowers } },
           },
           responses: { 200: ok200('Follower list'), 402: payment402 },
         },
@@ -307,21 +505,10 @@ Free alternatives: Browser scripts, CLI, and Node.js library at https://xactions
           tags: ['Scraping'],
           summary: 'List following (up to 1 000)',
           'x-payment-info': paymentInfo('scrape:following'),
+          'x-bazaar': bazaarExt(S.scrapeFollowing),
           requestBody: {
             required: true,
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  required: ['username'],
-                  properties: {
-                    ...sessionProp,
-                    username: { type: 'string', example: 'elonmusk' },
-                    limit: { type: 'integer', default: 100, maximum: 1000 },
-                  },
-                },
-              },
-            },
+            content: { 'application/json': { schema: S.scrapeFollowing } },
           },
           responses: { 200: ok200('Following list'), 402: payment402 },
         },
@@ -331,21 +518,10 @@ Free alternatives: Browser scripts, CLI, and Node.js library at https://xactions
           tags: ['Scraping'],
           summary: 'Get tweet history',
           'x-payment-info': paymentInfo('scrape:tweets'),
+          'x-bazaar': bazaarExt(S.scrapeTweets),
           requestBody: {
             required: true,
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  required: ['username'],
-                  properties: {
-                    ...sessionProp,
-                    username: { type: 'string', example: 'elonmusk' },
-                    limit: { type: 'integer', default: 50, maximum: 200 },
-                  },
-                },
-              },
-            },
+            content: { 'application/json': { schema: S.scrapeTweets } },
           },
           responses: { 200: ok200('Tweet list'), 402: payment402 },
         },
@@ -355,21 +531,10 @@ Free alternatives: Browser scripts, CLI, and Node.js library at https://xactions
           tags: ['Scraping'],
           summary: 'Get thread / conversation',
           'x-payment-info': paymentInfo('scrape:thread'),
+          'x-bazaar': bazaarExt(S.scrapeThread),
           requestBody: {
             required: true,
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  required: ['tweetId'],
-                  properties: {
-                    ...sessionProp,
-                    tweetId: { type: 'string', example: '1234567890' },
-                    tweetUrl: { type: 'string' },
-                  },
-                },
-              },
-            },
+            content: { 'application/json': { schema: S.scrapeThread } },
           },
           responses: { 200: ok200('Thread data'), 402: payment402 },
         },
@@ -379,21 +544,10 @@ Free alternatives: Browser scripts, CLI, and Node.js library at https://xactions
           tags: ['Scraping'],
           summary: 'Search tweets',
           'x-payment-info': paymentInfo('scrape:search'),
+          'x-bazaar': bazaarExt(S.scrapeSearch),
           requestBody: {
             required: true,
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  required: ['query'],
-                  properties: {
-                    ...sessionProp,
-                    query: { type: 'string', example: 'bitcoin' },
-                    limit: { type: 'integer', default: 50 },
-                  },
-                },
-              },
-            },
+            content: { 'application/json': { schema: S.scrapeSearch } },
           },
           responses: { 200: ok200('Search results'), 402: payment402 },
         },
@@ -403,21 +557,10 @@ Free alternatives: Browser scripts, CLI, and Node.js library at https://xactions
           tags: ['Scraping'],
           summary: 'Get tweets for a hashtag',
           'x-payment-info': paymentInfo('scrape:hashtag'),
+          'x-bazaar': bazaarExt(S.scrapeHashtag),
           requestBody: {
             required: true,
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  required: ['hashtag'],
-                  properties: {
-                    ...sessionProp,
-                    hashtag: { type: 'string', example: 'AI' },
-                    limit: { type: 'integer', default: 50 },
-                  },
-                },
-              },
-            },
+            content: { 'application/json': { schema: S.scrapeHashtag } },
           },
           responses: { 200: ok200('Hashtag tweets'), 402: payment402 },
         },
@@ -427,21 +570,10 @@ Free alternatives: Browser scripts, CLI, and Node.js library at https://xactions
           tags: ['Scraping'],
           summary: 'Get media from a profile',
           'x-payment-info': paymentInfo('scrape:media'),
+          'x-bazaar': bazaarExt(S.scrapeMedia),
           requestBody: {
             required: true,
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  required: ['username'],
-                  properties: {
-                    ...sessionProp,
-                    username: { type: 'string', example: 'elonmusk' },
-                    limit: { type: 'integer', default: 50 },
-                  },
-                },
-              },
-            },
+            content: { 'application/json': { schema: S.scrapeMedia } },
           },
           responses: { 200: ok200('Media list'), 402: payment402 },
         },
@@ -453,26 +585,13 @@ Free alternatives: Browser scripts, CLI, and Node.js library at https://xactions
           tags: ['Actions'],
           summary: 'Unfollow accounts that don\'t follow back',
           'x-payment-info': paymentInfo('action:unfollow-non-followers'),
+          'x-bazaar': bazaarExt(S.actionUnfollowNonFollowers, '#/components/schemas/AsyncOperationResponse'),
           requestBody: {
             required: true,
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  properties: {
-                    ...sessionProp,
-                    maxUnfollows: { type: 'integer', default: 100, maximum: 500 },
-                    dryRun: { type: 'boolean', default: false },
-                    excludeUsernames: { type: 'array', items: { type: 'string' } },
-                    excludeVerified: { type: 'boolean', default: false },
-                    delayMs: { type: 'integer', default: 2000, minimum: 1000 },
-                  },
-                },
-              },
-            },
+            content: { 'application/json': { schema: S.actionUnfollowNonFollowers } },
           },
           responses: {
-            200: { description: 'Operation queued', content: { 'application/json': { schema: { $ref: '#/components/schemas/AsyncOperationResponse' } } } },
+            200: ok200Async('Operation queued'),
             402: payment402,
           },
         },
@@ -482,20 +601,10 @@ Free alternatives: Browser scripts, CLI, and Node.js library at https://xactions
           tags: ['Actions'],
           summary: 'Unfollow all accounts',
           'x-payment-info': paymentInfo('action:unfollow-everyone'),
+          'x-bazaar': bazaarExt(S.actionUnfollowEveryone),
           requestBody: {
             required: true,
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  properties: {
-                    ...sessionProp,
-                    dryRun: { type: 'boolean', default: false },
-                    delayMs: { type: 'integer', default: 2000, minimum: 1000 },
-                  },
-                },
-              },
-            },
+            content: { 'application/json': { schema: S.actionUnfollowEveryone } },
           },
           responses: { 200: ok200('Operation queued'), 402: payment402 },
         },
@@ -505,19 +614,10 @@ Free alternatives: Browser scripts, CLI, and Node.js library at https://xactions
           tags: ['Actions'],
           summary: 'Detect who unfollowed you',
           'x-payment-info': paymentInfo('action:detect-unfollowers'),
+          'x-bazaar': bazaarExt(S.actionDetectUnfollowers),
           requestBody: {
             required: true,
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  properties: {
-                    ...sessionProp,
-                    username: { type: 'string' },
-                  },
-                },
-              },
-            },
+            content: { 'application/json': { schema: S.actionDetectUnfollowers } },
           },
           responses: { 200: ok200('Unfollower list'), 402: payment402 },
         },
@@ -527,21 +627,10 @@ Free alternatives: Browser scripts, CLI, and Node.js library at https://xactions
           tags: ['Actions'],
           summary: 'Auto-like tweets by keyword',
           'x-payment-info': paymentInfo('action:auto-like'),
+          'x-bazaar': bazaarExt(S.actionAutoLike),
           requestBody: {
             required: true,
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  required: ['keywords'],
-                  properties: {
-                    ...sessionProp,
-                    keywords: { type: 'array', items: { type: 'string' } },
-                    limit: { type: 'integer', default: 50 },
-                  },
-                },
-              },
-            },
+            content: { 'application/json': { schema: S.actionAutoLike } },
           },
           responses: { 200: ok200('Operation queued'), 402: payment402 },
         },
@@ -551,21 +640,10 @@ Free alternatives: Browser scripts, CLI, and Node.js library at https://xactions
           tags: ['Actions'],
           summary: 'Follow users who engaged with a tweet',
           'x-payment-info': paymentInfo('action:follow-engagers'),
+          'x-bazaar': bazaarExt(S.actionFollowEngagers),
           requestBody: {
             required: true,
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  required: ['tweetId'],
-                  properties: {
-                    ...sessionProp,
-                    tweetId: { type: 'string' },
-                    limit: { type: 'integer', default: 50 },
-                  },
-                },
-              },
-            },
+            content: { 'application/json': { schema: S.actionFollowEngagers } },
           },
           responses: { 200: ok200('Operation queued'), 402: payment402 },
         },
@@ -575,34 +653,12 @@ Free alternatives: Browser scripts, CLI, and Node.js library at https://xactions
           tags: ['Actions'],
           summary: 'Follow users tweeting about a keyword',
           'x-payment-info': paymentInfo('action:keyword-follow'),
+          'x-bazaar': bazaarExt(S.actionKeywordFollow),
           requestBody: {
             required: true,
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  required: ['keyword'],
-                  properties: {
-                    ...sessionProp,
-                    keyword: { type: 'string' },
-                    limit: { type: 'integer', default: 50 },
-                  },
-                },
-              },
-            },
+            content: { 'application/json': { schema: S.actionKeywordFollow } },
           },
           responses: { 200: ok200('Operation queued'), 402: payment402 },
-        },
-      },
-      '/api/ai/action/status/{operationId}': {
-        get: {
-          tags: ['Actions'],
-          summary: 'Check operation status',
-          security: [],
-          parameters: [
-            { name: 'operationId', in: 'path', required: true, schema: { type: 'string' } },
-          ],
-          responses: { 200: { description: 'Operation status' } },
         },
       },
 
@@ -612,23 +668,10 @@ Free alternatives: Browser scripts, CLI, and Node.js library at https://xactions
           tags: ['Monitoring'],
           summary: 'Monitor account changes',
           'x-payment-info': paymentInfo('monitor:account'),
+          'x-bazaar': bazaarExt(S.monitorAccount),
           requestBody: {
             required: true,
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  required: ['username'],
-                  properties: {
-                    ...sessionProp,
-                    username: { type: 'string' },
-                    includeFollowers: { type: 'boolean', default: true },
-                    includeFollowing: { type: 'boolean', default: true },
-                    includeStats: { type: 'boolean', default: true },
-                  },
-                },
-              },
-            },
+            content: { 'application/json': { schema: S.monitorAccount } },
           },
           responses: { 200: ok200('Snapshot queued'), 402: payment402 },
         },
@@ -638,17 +681,10 @@ Free alternatives: Browser scripts, CLI, and Node.js library at https://xactions
           tags: ['Monitoring'],
           summary: 'Monitor follower changes',
           'x-payment-info': paymentInfo('monitor:followers'),
+          'x-bazaar': bazaarExt(S.monitorFollowers),
           requestBody: {
             required: true,
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  required: ['username'],
-                  properties: { ...sessionProp, username: { type: 'string' } },
-                },
-              },
-            },
+            content: { 'application/json': { schema: S.monitorFollowers } },
           },
           responses: { 200: ok200('Follower diff'), 402: payment402 },
         },
@@ -658,30 +694,12 @@ Free alternatives: Browser scripts, CLI, and Node.js library at https://xactions
           tags: ['Monitoring'],
           summary: 'Get new follower alerts',
           'x-payment-info': paymentInfo('alert:new-followers'),
+          'x-bazaar': bazaarExt(S.alertNewFollowers),
           requestBody: {
             required: true,
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  required: ['username'],
-                  properties: { ...sessionProp, username: { type: 'string' } },
-                },
-              },
-            },
+            content: { 'application/json': { schema: S.alertNewFollowers } },
           },
           responses: { 200: ok200('New followers'), 402: payment402 },
-        },
-      },
-      '/api/ai/monitor/snapshot/{username}': {
-        get: {
-          tags: ['Monitoring'],
-          summary: 'Get latest snapshot for a username',
-          security: [],
-          parameters: [
-            { name: 'username', in: 'path', required: true, schema: { type: 'string' } },
-          ],
-          responses: { 200: { description: 'Latest snapshot data' } },
         },
       },
 
@@ -691,21 +709,10 @@ Free alternatives: Browser scripts, CLI, and Node.js library at https://xactions
           tags: ['Utility'],
           summary: 'Download video from a tweet',
           'x-payment-info': paymentInfo('download:video'),
+          'x-bazaar': bazaarExt(S.downloadVideo),
           requestBody: {
             required: true,
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  properties: {
-                    ...sessionProp,
-                    tweetUrl: { type: 'string', example: 'https://x.com/elonmusk/status/1234567890' },
-                    tweetId: { type: 'string' },
-                    quality: { type: 'string', enum: ['highest', 'lowest', 'all'], default: 'highest' },
-                  },
-                },
-              },
-            },
+            content: { 'application/json': { schema: S.downloadVideo } },
           },
           responses: { 200: ok200('Video URLs'), 402: payment402 },
         },
@@ -715,19 +722,10 @@ Free alternatives: Browser scripts, CLI, and Node.js library at https://xactions
           tags: ['Utility'],
           summary: 'Export bookmarks',
           'x-payment-info': paymentInfo('export:bookmarks'),
+          'x-bazaar': bazaarExt(S.exportBookmarks),
           requestBody: {
             required: true,
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  properties: {
-                    ...sessionProp,
-                    format: { type: 'string', enum: ['json', 'csv'], default: 'json' },
-                  },
-                },
-              },
-            },
+            content: { 'application/json': { schema: S.exportBookmarks } },
           },
           responses: { 200: ok200('Bookmarks data'), 402: payment402 },
         },
@@ -737,20 +735,10 @@ Free alternatives: Browser scripts, CLI, and Node.js library at https://xactions
           tags: ['Utility'],
           summary: 'Unroll thread to plain text',
           'x-payment-info': paymentInfo('unroll:thread'),
+          'x-bazaar': bazaarExt(S.unrollThread),
           requestBody: {
             required: true,
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  properties: {
-                    ...sessionProp,
-                    tweetUrl: { type: 'string' },
-                    tweetId: { type: 'string' },
-                  },
-                },
-              },
-            },
+            content: { 'application/json': { schema: S.unrollThread } },
           },
           responses: { 200: ok200('Unrolled thread'), 402: payment402 },
         },
@@ -762,21 +750,10 @@ Free alternatives: Browser scripts, CLI, and Node.js library at https://xactions
           tags: ['Writer'],
           summary: 'Analyze a user\'s writing voice from tweets',
           'x-payment-info': paymentInfo('writer:analyze-voice'),
+          'x-bazaar': bazaarExt(S.writerAnalyzeVoice),
           requestBody: {
             required: true,
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  required: ['username', 'authToken'],
-                  properties: {
-                    username: { type: 'string' },
-                    authToken: { type: 'string', description: 'X/Twitter auth_token cookie' },
-                    tweetLimit: { type: 'integer', default: 200 },
-                  },
-                },
-              },
-            },
+            content: { 'application/json': { schema: S.writerAnalyzeVoice } },
           },
           responses: { 200: ok200('Voice profile analysis'), 402: payment402 },
         },
@@ -786,22 +763,10 @@ Free alternatives: Browser scripts, CLI, and Node.js library at https://xactions
           tags: ['Writer'],
           summary: 'Generate tweets in a user\'s voice',
           'x-payment-info': paymentInfo('writer:generate'),
+          'x-bazaar': bazaarExt(S.writerGenerate),
           requestBody: {
             required: true,
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  required: ['username', 'topic'],
-                  properties: {
-                    username: { type: 'string' },
-                    topic: { type: 'string' },
-                    count: { type: 'integer', default: 5 },
-                    style: { type: 'string', enum: ['casual', 'professional', 'provocative', 'educational'] },
-                  },
-                },
-              },
-            },
+            content: { 'application/json': { schema: S.writerGenerate } },
           },
           responses: { 200: ok200('Generated tweets'), 402: payment402 },
         },
@@ -811,21 +776,10 @@ Free alternatives: Browser scripts, CLI, and Node.js library at https://xactions
           tags: ['Writer'],
           summary: 'Rewrite / improve an existing tweet',
           'x-payment-info': paymentInfo('writer:rewrite'),
+          'x-bazaar': bazaarExt(S.writerRewrite),
           requestBody: {
             required: true,
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  required: ['tweet'],
-                  properties: {
-                    tweet: { type: 'string' },
-                    goal: { type: 'string', enum: ['engagement', 'clarity', 'humor', 'professionalism'] },
-                    voiceUsername: { type: 'string' },
-                  },
-                },
-              },
-            },
+            content: { 'application/json': { schema: S.writerRewrite } },
           },
           responses: { 200: ok200('Rewritten tweet'), 402: payment402 },
         },
@@ -835,21 +789,10 @@ Free alternatives: Browser scripts, CLI, and Node.js library at https://xactions
           tags: ['Writer'],
           summary: 'Generate weekly content calendar',
           'x-payment-info': paymentInfo('writer:calendar'),
+          'x-bazaar': bazaarExt(S.writerCalendar),
           requestBody: {
             required: true,
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  required: ['username'],
-                  properties: {
-                    username: { type: 'string' },
-                    niche: { type: 'string' },
-                    tweetsPerDay: { type: 'integer', default: 3 },
-                  },
-                },
-              },
-            },
+            content: { 'application/json': { schema: S.writerCalendar } },
           },
           responses: { 200: ok200('Content calendar'), 402: payment402 },
         },
@@ -859,49 +802,17 @@ Free alternatives: Browser scripts, CLI, and Node.js library at https://xactions
           tags: ['Writer'],
           summary: 'Generate a reply to a tweet',
           'x-payment-info': paymentInfo('writer:reply'),
+          'x-bazaar': bazaarExt(S.writerReply),
           requestBody: {
             required: true,
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  required: ['tweetText'],
-                  properties: {
-                    tweetText: { type: 'string' },
-                    tweetUrl: { type: 'string' },
-                    voiceUsername: { type: 'string' },
-                    tone: { type: 'string' },
-                  },
-                },
-              },
-            },
+            content: { 'application/json': { schema: S.writerReply } },
           },
           responses: { 200: ok200('Generated reply'), 402: payment402 },
-        },
-      },
-      '/api/ai/writer/voice-profiles': {
-        get: {
-          tags: ['Writer'],
-          summary: 'List saved voice profiles',
-          security: [],
-          responses: { 200: { description: 'Array of voice profiles' } },
-        },
-      },
-      '/api/ai/writer/voice-profiles/{username}': {
-        get: {
-          tags: ['Writer'],
-          summary: 'Get a specific voice profile',
-          security: [],
-          parameters: [
-            { name: 'username', in: 'path', required: true, schema: { type: 'string' } },
-          ],
-          responses: { 200: { description: 'Voice profile' }, 404: { description: 'Not found' } },
         },
       },
     },
 
     tags: [
-      { name: 'Info', description: 'Free informational endpoints' },
       { name: 'Scraping', description: 'Structured data extraction from X/Twitter' },
       { name: 'Actions', description: 'Account automation (unfollow, like, follow)' },
       { name: 'Monitoring', description: 'Track account & follower changes over time' },
