@@ -13,32 +13,61 @@
 
 import express from 'express';
 import crypto from 'crypto';
+import { errorResponse } from '../../utils/errorResponse.js';
 
 const router = express.Router();
 
-/**
- * Generate unique operation ID
- */
-const generateOperationId = () => {
-  return `ai-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
-};
+const generateOperationId = () =>
+  `ai-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
 
 /**
- * Helper: Create consistent error response
+ * POST /api/ai/action/validate-session
+ * Free — no x402 payment required.
+ * Call this before submitting a paid operation to verify the session cookie
+ * is still alive and avoid wasting a payment on an expired auth token.
  */
-const errorResponse = (res, statusCode, error, message, extras = {}) => {
-  return res.status(statusCode).json({
-    success: false,
-    error,
-    message,
-    retryable: extras.retryable ?? true,
-    retryAfterMs: extras.retryAfterMs ?? 5000,
-    timestamp: new Date().toISOString(),
-    ...extras,
-  });
-};
+router.post('/validate-session', async (req, res) => {
+  const sessionCookie = req.body.sessionCookie || req.headers['x-session-cookie'];
+  if (!sessionCookie) {
+    return res.status(400).json({
+      success: false,
+      valid: false,
+      error: 'SESSION_REQUIRED',
+      message: 'Provide sessionCookie in body or X-Session-Cookie header',
+    });
+  }
 
-// Require session cookie for all actions
+  try {
+    // Lightweight check: fetch the home timeline API — 401/redirect = expired.
+    const response = await fetch('https://x.com/i/api/graphql/homeTimeline', {
+      headers: {
+        Cookie: `auth_token=${sessionCookie}`,
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'X-Twitter-Active-User': 'yes',
+      },
+      redirect: 'manual',
+      signal: AbortSignal.timeout(8_000),
+    });
+
+    const valid = response.status !== 401 && response.status !== 403 && response.status < 400;
+    return res.json({
+      success: true,
+      valid,
+      checkedAt: new Date().toISOString(),
+      ...(valid ? {} : { hint: 'Session cookie appears expired — log into x.com to refresh it' }),
+    });
+  } catch (err) {
+    return res.json({
+      success: true,
+      valid: false,
+      error: 'CHECK_FAILED',
+      message: err.message,
+      checkedAt: new Date().toISOString(),
+    });
+  }
+});
+
+// Require session cookie for all subsequent action routes
 router.use(async (req, res, next) => {
   // Skip for status endpoint
   if (req.path.startsWith('/status/')) {

@@ -333,44 +333,143 @@ operationsQueue.process('scriptRun', 2, async (job) => {
   );
 });
 
-// Job event handlers
+// Process jobs - datasetFetch
+operationsQueue.process('datasetFetch', 2, async (job) => {
+  console.log(`🔄 Processing job ${job.id}: datasetFetch (${job.data.config?.dataset})`);
+  const { dataset, limit, offset, sessionCookie } = job.data.config || {};
+  if (!dataset) throw new Error('datasetFetch: config.dataset is required');
+
+  const { DatasetStore } = await import('../../src/scraping/paginationEngine.js');
+  const ds = new DatasetStore(dataset, sessionCookie);
+  job.progress({ status: 'running', message: `Fetching dataset: ${dataset}` });
+  const data = await ds.getData({ offset: offset || 0, limit: limit || 100 });
+  job.progress({ status: 'done', message: `Fetched ${data?.items?.length ?? 0} records` });
+  return data;
+});
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+/** Fire a best-effort POST to a callbackUrl with the job result */
+function deliverCallback(url, payload) {
+  if (!url) return;
+  fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-XActions-Event': payload.event },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(10_000),
+  }).catch(err => console.warn(`⚠️  callbackUrl delivery failed (${url}): ${err.message}`));
+}
+
+// ── Job event handlers ──────────────────────────────────────────────────────
+
+operationsQueue.on('active', async (job) => {
+  console.log(`▶️  Job active: ${job.id} (${job.data.type || job.name})`);
+  try {
+    await prisma.operation.update({
+      where: { id: job.data.operationId },
+      data: { status: 'processing', startedAt: new Date() },
+    });
+  } catch (err) {
+    console.warn(`⚠️  Could not set startedAt for ${job.data.operationId}: ${err.message}`);
+  }
+  global.io?.to(`job:${job.data.operationId}`).emit('job:active', {
+    jobId: job.data.operationId,
+    type: job.data.type,
+    startedAt: new Date().toISOString(),
+  });
+});
+
+operationsQueue.on('progress', (job, progress) => {
+  global.io?.to(`job:${job.data.operationId}`).emit('job:progress', {
+    jobId: job.data.operationId,
+    progress,
+  });
+});
+
 operationsQueue.on('completed', async (job, result) => {
   console.log(`✅ Job completed: ${job.id}`);
-  
+
   await prisma.operation.update({
     where: { id: job.data.operationId },
-    data: {
-      status: 'completed',
-      completedAt: new Date(),
-      result
-    }
+    data: { status: 'completed', completedAt: new Date(), result },
+  });
+
+  global.io?.to(`job:${job.data.operationId}`).emit('job:completed', {
+    jobId: job.data.operationId,
+    result,
+    completedAt: new Date().toISOString(),
+  });
+
+  deliverCallback(job.data.config?.callbackUrl, {
+    event: 'job.completed',
+    jobId: job.data.operationId,
+    type: job.data.type,
+    result,
+    completedAt: new Date().toISOString(),
   });
 });
 
 operationsQueue.on('failed', async (job, err) => {
   console.error(`❌ Job failed: ${job.id}`, err);
-  
+
   await prisma.operation.update({
     where: { id: job.data.operationId },
-    data: {
-      status: 'failed',
-      error: err.message,
-      retryCount: job.attemptsMade
-    }
+    data: { status: 'failed', error: err.message, retryCount: job.attemptsMade },
+  });
+
+  global.io?.to(`job:${job.data.operationId}`).emit('job:failed', {
+    jobId: job.data.operationId,
+    error: err.message,
+    failedAt: new Date().toISOString(),
+  });
+
+  deliverCallback(job.data.config?.callbackUrl, {
+    event: 'job.failed',
+    jobId: job.data.operationId,
+    type: job.data.type,
+    error: err.message,
+    failedAt: new Date().toISOString(),
   });
 });
 
-operationsQueue.on('stalled', async (job) => {
+operationsQueue.on('stalled', (job) => {
   console.warn(`⚠️ Job stalled: ${job.id}`);
 });
 
-// Graceful shutdown
-process.on('SIGTERM', async () => {
-  console.log('📊 Closing queue...');
-  await operationsQueue.close();
-  await prisma.$disconnect();
-  process.exit(0);
-});
+// ── Graceful shutdown ───────────────────────────────────────────────────────
+
+async function gracefulShutdown(signal) {
+  console.log(`📊 Received ${signal} — draining job queue…`);
+  try {
+    await operationsQueue.pause(true /* isLocal */);
+
+    await Promise.race([
+      operationsQueue.whenCurrentJobsFinished(),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Drain timeout after 30s')), 30_000)
+      ),
+    ]).catch(err => console.warn(`⚠️  ${err.message} — forcing shutdown`));
+
+    // Close any Puppeteer browsers still open
+    if (global.activeBrowsers?.size) {
+      console.log(`🧹 Closing ${global.activeBrowsers.size} browser(s)…`);
+      await Promise.allSettled(
+        Array.from(global.activeBrowsers).map(b => b.close().catch(() => {}))
+      );
+    }
+
+    await operationsQueue.close();
+    await prisma.$disconnect();
+    console.log('✅ Graceful shutdown complete.');
+  } catch (err) {
+    console.error('❌ Shutdown error:', err.message);
+  } finally {
+    process.exit(0);
+  }
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
 
 // Periodic cleanup of cancelled job markers
 setInterval(cleanupCancelledJobs, 3600000); // Every hour

@@ -109,6 +109,8 @@ export async function runBrowserScript(config, updateProgress, isCancelled) {
   const rawCode = await readFile(filePath, 'utf8');
   const patchedCode = patchConfig(rawCode, params);
 
+  if (!global.activeBrowsers) global.activeBrowsers = new Set();
+
   const browser = await puppeteer.launch({
     headless: process.env.PUPPETEER_HEADLESS === 'false' ? false : 'new',
     args: [
@@ -124,6 +126,7 @@ export async function runBrowserScript(config, updateProgress, isCancelled) {
     ],
   });
 
+  global.activeBrowsers.add(browser);
   const page = await browser.newPage();
 
   await page.setViewport({ width: 1280, height: 800 });
@@ -201,5 +204,6 @@ export async function runBrowserScript(config, updateProgress, isCancelled) {
     };
   } finally {
     await browser.close();
+    global.activeBrowsers?.delete(browser);
   }
 }
