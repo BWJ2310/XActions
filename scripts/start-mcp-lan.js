@@ -2,7 +2,7 @@
 // Start the XActions MCP server as a LAN HTTP service using .env.mcp.
 
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { accessSync, constants, existsSync } from 'node:fs';
 import path from 'node:path';
 import dotenv from 'dotenv';
 
@@ -27,6 +27,37 @@ const defaults = {
 
 for (const [key, value] of Object.entries(defaults)) {
   if (!process.env[key]) process.env[key] = value;
+}
+
+function firstExecutable(paths) {
+  for (const candidate of paths) {
+    try {
+      accessSync(candidate, constants.X_OK);
+      return candidate;
+    } catch {}
+  }
+  return null;
+}
+
+if (!process.env.PUPPETEER_EXECUTABLE_PATH && process.platform === 'linux') {
+  const chromium = firstExecutable([
+    '/usr/bin/chromium',
+    '/usr/bin/chromium-browser',
+    '/snap/bin/chromium',
+    '/usr/bin/google-chrome-stable',
+    '/usr/bin/google-chrome',
+    '/opt/google/chrome/chrome',
+  ]);
+
+  if (chromium) {
+    process.env.PUPPETEER_EXECUTABLE_PATH = chromium;
+    console.error(`Using system Chromium for Puppeteer: ${chromium}`);
+  } else if (process.arch === 'arm64' || process.arch === 'arm') {
+    console.error(
+      'No system Chromium found. Linux ARM hosts usually need Chromium installed ' +
+      'and PUPPETEER_EXECUTABLE_PATH set, for example /usr/bin/chromium.',
+    );
+  }
 }
 
 const missing = ['XACTIONS_MCP_BEARER_TOKEN', 'XACTIONS_SESSION_COOKIE']
