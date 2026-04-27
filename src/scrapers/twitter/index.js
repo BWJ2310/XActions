@@ -19,6 +19,8 @@
 import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import fs from 'fs/promises';
+import os from 'os';
+import path from 'path';
 
 puppeteer.use(StealthPlugin());
 
@@ -50,16 +52,38 @@ export async function createBrowser(options = {}) {
     return adapter.launch(adapterOptions);
   }
 
-  return puppeteer.launch({
+  const userDataDir =
+    options.userDataDir ||
+    process.env.XACTIONS_PUPPETEER_USER_DATA_DIR ||
+    path.join(os.tmpdir(), 'xactions-puppeteer-profile');
+  const executablePath = options.executablePath || process.env.PUPPETEER_EXECUTABLE_PATH;
+
+  await fs.mkdir(userDataDir, { recursive: true });
+
+  const launchOptions = {
+    ...options,
     headless: options.headless !== false ? 'new' : false,
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-blink-features=AutomationControlled',
       '--disable-web-security',
+      '--disable-crash-reporter',
+      '--disable-breakpad',
+      '--disable-crashpad',
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
+      '--disable-software-rasterizer',
+      ...(options.args || []),
     ],
-    ...options,
-  });
+    userDataDir,
+  };
+
+  if (executablePath) {
+    launchOptions.executablePath = executablePath;
+  }
+
+  return puppeteer.launch(launchOptions);
 }
 
 /**
@@ -385,13 +409,15 @@ export async function searchTweets(page, query, options = {}) {
   const f = filterMap[filter] || 'live';
   
   await page.goto(`https://x.com/search?q=${encodedQuery}&src=typed_query&f=${f}`, {
-    waitUntil: 'networkidle2',
+    waitUntil: 'domcontentloaded',
+    timeout: 20000,
   });
-  await randomDelay();
+  await page.waitForSelector('article[data-testid="tweet"]', { timeout: 10000 }).catch(() => {});
+  await sleep(750);
 
   const tweets = new Map();
   let retries = 0;
-  const maxRetries = 10;
+  const maxRetries = 4;
 
   while (tweets.size < limit && retries < maxRetries) {
     const tweetData = await page.evaluate(() => {
@@ -428,8 +454,9 @@ export async function searchTweets(page, query, options = {}) {
       retries = 0;
     }
 
+    if (retries >= maxRetries) break;
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-    await randomDelay(1500, 3000);
+    await sleep(1000);
   }
 
   return Array.from(tweets.values()).slice(0, limit);

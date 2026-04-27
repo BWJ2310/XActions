@@ -15,6 +15,12 @@
  * - XACTIONS_MODE: 'local' (default) or 'remote'
  * - XACTIONS_API_URL: API URL for remote mode (default: https://api.xactions.app)
  * - XACTIONS_SESSION_COOKIE: X/Twitter auth_token cookie
+ * - MCP_TRANSPORT: 'stdio' (default) or 'http'
+ * - MCP_HOST: Host for HTTP transport (default: 127.0.0.1)
+ * - PORT: Port for HTTP transport (default: 3001)
+ * - XACTIONS_MCP_BEARER_TOKEN: Optional bearer token for HTTP /mcp access
+ * - XACTIONS_SERIALIZE_LOCAL_TOOLS: Serialize local tool calls, default true
+ * - XACTIONS_BROWSER_IDLE_MS: Close idle local browser after this many ms, default 900000
  * - X402_PRIVATE_KEY: (Optional) Wallet key for remote mode micropayments
  * - X402_NETWORK: (Optional) 'base-sepolia' or 'base'
  * 
@@ -26,11 +32,14 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { realpathSync } from 'node:fs';
+import path from 'node:path';
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { randomUUID } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 
 // ============================================================================
 // Plugin System
@@ -47,10 +56,42 @@ const API_URL = process.env.XACTIONS_API_URL || 'https://api.xactions.app';
 const X402_PRIVATE_KEY = process.env.X402_PRIVATE_KEY;
 const X402_NETWORK = process.env.X402_NETWORK || 'base-sepolia';
 const SESSION_COOKIE = process.env.XACTIONS_SESSION_COOKIE;
+const SERIALIZE_LOCAL_TOOLS = process.env.XACTIONS_SERIALIZE_LOCAL_TOOLS !== 'false';
 
 // Dynamic backend (initialized at startup)
 let localTools = null;
 let remoteClient = null;
+let httpScraperPromise = null;
+let localToolQueue = Promise.resolve();
+
+async function getHttpScraper() {
+  if (!httpScraperPromise) {
+    httpScraperPromise = import('../scrapers/twitter/http/index.js').then(
+      (mod) => mod.createHttpScraper({}),
+    );
+  }
+  return httpScraperPromise;
+}
+
+function enqueueLocalTool(task) {
+  const run = localToolQueue.catch(() => {}).then(task);
+  localToolQueue = run.catch(() => {});
+  return run;
+}
+
+async function executeQueuedTool(name, args) {
+  if (MODE !== 'local' || !SERIALIZE_LOCAL_TOOLS) {
+    return executeTool(name, args);
+  }
+
+  return enqueueLocalTool(async () => {
+    try {
+      return await executeTool(name, args);
+    } finally {
+      localTools?.scheduleBrowserIdleClose?.();
+    }
+  });
+}
 
 // ============================================================================
 // Tool Definitions
@@ -2394,6 +2435,32 @@ async function executeXeepyTool(name, args) {
   switch (name) {
     // ── Scrapers ──
     case 'x_get_replies': {
+      if (process.env.XACTIONS_SCRAPER_ADAPTER === 'http') {
+        const scraper = await getHttpScraper();
+        const tweetId = tweetIdFromUrl(args.tweetUrl);
+        const sortBy = args.sort === 'recent' ? 'recency' : 'relevance';
+        const result = await scraper.scrapeConversation(tweetId, {
+          limit: args.limit || 50,
+          sortBy,
+        });
+        const replies = (result.conversation || []).slice(0, args.limit || 50).map((tweet) => ({
+          text: tweet.text || '',
+          author: tweet.author?.name
+            ? `${tweet.author.name} (@${tweet.author.username})`
+            : `@${tweet.author?.username || ''}`,
+          authorUsername: tweet.author?.username || '',
+          authorName: tweet.author?.name || '',
+          timestamp: tweet.createdAt || '',
+          url: tweet?.url || (
+            tweet?.id && tweet?.author?.username
+              ? `https://x.com/${tweet.author.username}/status/${tweet.id}`
+              : null
+          ),
+          id: tweet.id || null,
+        }));
+        return { replies, count: replies.length };
+      }
+
       const page = await localTools.getPage();
       const url = args.tweetUrl;
       const tweetId = tweetIdFromUrl(url);
@@ -3897,7 +3964,7 @@ function createMcpServer() {
     const { name, arguments: args } = request.params;
 
     try {
-      const result = await executeTool(name, args || {});
+      const result = await executeQueuedTool(name, args || {});
 
       return {
         content: [
@@ -4064,6 +4131,10 @@ async function startHttpTransport() {
   const { default: express } = await import('express');
   const { createMcpPaymentMiddleware, mcpPricingHandler } = await import('./x402-mcp.js');
 
+  const host = process.env.MCP_HOST || process.env.HOST || '127.0.0.1';
+  const port = process.env.PORT || 3001;
+  const bearerToken = process.env.XACTIONS_MCP_BEARER_TOKEN || process.env.MCP_BEARER_TOKEN;
+
   const app = express();
   app.use(express.json());
 
@@ -4072,11 +4143,35 @@ async function startHttpTransport() {
 
   // Health check
   app.get('/health', (_req, res) => {
-    res.json({ status: 'ok', transport: 'http', tools: TOOLS.length, sessions: sessions.size });
+    res.json({
+      status: 'ok',
+      transport: 'http',
+      mode: MODE,
+      tools: TOOLS.length,
+      sessions: sessions.size,
+      serializeLocalTools: MODE === 'local' ? SERIALIZE_LOCAL_TOOLS : false,
+      protected: Boolean(bearerToken),
+    });
   });
 
   // x402 pricing discovery (free endpoint — no payment required)
   app.get('/mcp/pricing', mcpPricingHandler);
+
+  if (bearerToken) {
+    app.use('/mcp', (req, res, next) => {
+      const authHeader = req.headers.authorization || '';
+      if (authHeader === `Bearer ${bearerToken}`) {
+        next();
+        return;
+      }
+
+      res.status(401).json({
+        jsonrpc: '2.0',
+        error: { code: -32001, message: 'Unauthorized MCP request' },
+        id: null,
+      });
+    });
+  }
 
   // x402 payment middleware — gates priced tool calls before reaching the MCP handler
   app.use(createMcpPaymentMiddleware());
@@ -4124,12 +4219,16 @@ async function startHttpTransport() {
     });
   });
 
-  const port = process.env.PORT || 3001;
-  app.listen(port, () => {
-    console.error(`✅ Server running on HTTP — http://0.0.0.0:${port}/mcp`);
+  app.listen(port, host, () => {
+    console.error(`✅ Server running on HTTP — http://${host}:${port}/mcp`);
     console.error('   Ready for remote MCP client connections.');
+    if (bearerToken) {
+      console.error('   Bearer token protection enabled for /mcp.');
+    } else {
+      console.error('   ⚠️  No bearer token set; only expose this on trusted networks.');
+    }
     if (process.env.X402_PAY_TO_ADDRESS) {
-      console.error(`💰 x402 payments enabled — pricing: http://0.0.0.0:${port}/mcp/pricing`);
+      console.error(`💰 x402 payments enabled — pricing: http://${host}:${port}/mcp/pricing`);
     } else {
       console.error('ℹ️  x402 payments disabled (set X402_PAY_TO_ADDRESS to enable per-tool billing)');
     }
@@ -4171,13 +4270,27 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error('❌ Fatal error:', error.message);
-  if (process.env.DEBUG) {
-    console.error(error.stack);
+function isDirectRun() {
+  if (!process.argv[1]) return false;
+
+  try {
+    const modulePath = realpathSync(fileURLToPath(import.meta.url));
+    const entryPath = realpathSync(path.resolve(process.argv[1]));
+    return modulePath === entryPath;
+  } catch {
+    return fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
   }
-  process.exit(1);
-});
+}
+
+if (isDirectRun()) {
+  main().catch((error) => {
+    console.error('❌ Fatal error:', error.message);
+    if (process.env.DEBUG) {
+      console.error(error.stack);
+    }
+    process.exit(1);
+  });
+}
 
 // Export for testing without starting the stdio transport
 export { TOOLS };

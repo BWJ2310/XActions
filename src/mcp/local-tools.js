@@ -41,16 +41,54 @@ import os from 'os';
 let browser = null;
 let page = null;
 let authenticatedCookie = null;
+let browserIdleTimer = null;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const randomDelay = (min = 1000, max = 3000) =>
   sleep(min + Math.random() * (max - min));
+
+function getBrowserIdleMs() {
+  const raw = process.env.XACTIONS_BROWSER_IDLE_MS;
+  if (!raw) return 15 * 60 * 1000;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 15 * 60 * 1000;
+}
+
+function clearBrowserIdleTimer() {
+  if (browserIdleTimer) {
+    clearTimeout(browserIdleTimer);
+    browserIdleTimer = null;
+  }
+}
+
+function normalizeUsername(value = '') {
+  return String(value || '').trim().replace(/^@/, '');
+}
+
+let httpScraperPromise = null;
+
+async function getHttpScraper() {
+  if (!httpScraperPromise) {
+    httpScraperPromise = import('../scrapers/twitter/http/index.js').then(
+      (mod) => mod.createHttpScraper({}),
+    );
+  }
+  return httpScraperPromise;
+}
+
+function buildTweetUrl(tweet, fallbackUsername = '') {
+  if (tweet?.url) return tweet.url;
+  const username = tweet?.author?.username || fallbackUsername;
+  if (!tweet?.id || !username) return null;
+  return `https://x.com/${username}/status/${tweet.id}`;
+}
 
 /**
  * Ensure a browser/page pair is available, creating if needed.
  * Uses createBrowser/createPage from the canonical scrapers module.
  */
 async function ensureBrowser({ authenticate = true } = {}) {
+  clearBrowserIdleTimer();
   const envCookie = process.env.XACTIONS_SESSION_COOKIE;
 
   if (!browser || !browser.isConnected()) {
@@ -76,6 +114,7 @@ async function ensureBrowser({ authenticate = true } = {}) {
  * Close browser (called by server.js on SIGINT/SIGTERM)
  */
 export async function closeBrowser() {
+  clearBrowserIdleTimer();
   if (browser) {
     try {
       await browser.close();
@@ -84,6 +123,23 @@ export async function closeBrowser() {
     page = null;
     authenticatedCookie = null;
   }
+}
+
+export function scheduleBrowserIdleClose() {
+  clearBrowserIdleTimer();
+  const idleMs = getBrowserIdleMs();
+  if (!browser || idleMs === 0) return;
+
+  browserIdleTimer = setTimeout(async () => {
+    try {
+      await closeBrowser();
+      console.error(`Closed idle XActions browser after ${idleMs}ms`);
+    } catch (error) {
+      console.error('Failed to close idle XActions browser:', error.message);
+    }
+  }, idleMs);
+
+  if (browserIdleTimer.unref) browserIdleTimer.unref();
 }
 
 export async function getPage() {
@@ -232,11 +288,41 @@ export async function x_get_non_followers({ username }) {
 }
 
 export async function x_get_tweets({ username, limit = 50 }) {
+  if (process.env.XACTIONS_SCRAPER_ADAPTER === 'http') {
+    const scraper = await getHttpScraper();
+    const tweets = await scraper.scrapeTweets(username, { limit });
+    return tweets.map((tweet) => ({
+      ...tweet,
+      url: buildTweetUrl(tweet, username),
+    }));
+  }
+
   const { page: pg } = await ensureBrowser();
   return scrapeTweets(pg, username, { limit });
 }
 
 export async function x_search_tweets({ query, limit = 50 }) {
+  if (process.env.XACTIONS_SCRAPER_ADAPTER === 'http') {
+    const scraper = await getHttpScraper();
+    const tweets = await scraper.searchTweets(query, { limit });
+    return tweets.map((tweet) => {
+      const authorUsername = normalizeUsername(tweet?.author?.username || tweet?.authorUsername || tweet?.username || '');
+      const url = tweet?.url || (
+        tweet?.id && authorUsername
+          ? `https://x.com/${authorUsername}/status/${tweet.id}`
+          : null
+      );
+      return {
+        ...tweet,
+        author: authorUsername || tweet?.author?.name || tweet?.author || '',
+        authorUsername,
+        username: authorUsername,
+        url,
+        likes: tweet?.metrics?.likes ?? tweet?.likes ?? 0,
+      };
+    });
+  }
+
   const { page: pg } = await ensureBrowser();
   return searchTweets(pg, query, { limit });
 }

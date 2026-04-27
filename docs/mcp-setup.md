@@ -154,6 +154,42 @@ Then use `xactions-mcp` as the command instead of `npx`:
 }
 ```
 
+## LAN HTTP Server (Shared Browser)
+
+For scheduled agents or multiple MCP clients, run one long-lived XActions server on a trusted computer and connect clients over your local network. This lets every client share one XActions process and one reusable Puppeteer browser instead of spawning a new browser per run.
+
+On the machine that should host XActions:
+
+```bash
+export MCP_TRANSPORT=http
+export MCP_HOST=0.0.0.0
+export PORT=3344
+export XACTIONS_MODE=local
+export XACTIONS_SESSION_COOKIE="your_auth_token_here"
+export XACTIONS_MCP_BEARER_TOKEN="use-a-long-random-token"
+export XACTIONS_SERIALIZE_LOCAL_TOOLS=true
+export XACTIONS_BROWSER_IDLE_MS=900000
+
+node src/mcp/server.js
+```
+
+Then point your MCP client at:
+
+```text
+http://LAN_IP_OF_HOST:3344/mcp
+```
+
+For Codex:
+
+```toml
+[mcp_servers.xactions]
+url = "http://LAN_IP_OF_HOST:3344/mcp"
+bearer_token_env_var = "XACTIONS_MCP_BEARER_TOKEN"
+default_tools_approval_mode = "approve"
+```
+
+Set `XACTIONS_MCP_BEARER_TOKEN` in the client environment to the same random token used by the server. Keep this endpoint on a trusted LAN or VPN only; the session cookie can control the X account.
+
 ---
 
 ## Environment Variables
@@ -163,6 +199,12 @@ Then use `xactions-mcp` as the command instead of `npx`:
 | `XACTIONS_SESSION_COOKIE` | For most tools | Your X/Twitter `auth_token` cookie |
 | `OPENROUTER_API_KEY` | For AI tools | Free key from [openrouter.ai](https://openrouter.ai) |
 | `XACTIONS_MODE` | No | `local` (default, free) or `remote` |
+| `MCP_TRANSPORT` | No | `stdio` (default) or `http` |
+| `MCP_HOST` | No | HTTP bind host, default `127.0.0.1`; use `0.0.0.0` for LAN hosting |
+| `PORT` | No | HTTP port, default `3001` |
+| `XACTIONS_MCP_BEARER_TOKEN` | Recommended for HTTP | Bearer token required for `/mcp` requests |
+| `XACTIONS_SERIALIZE_LOCAL_TOOLS` | No | Serialize local tools to protect the shared browser, default `true` |
+| `XACTIONS_BROWSER_IDLE_MS` | No | Close the shared browser after idle time, default `900000`; set `0` to keep open |
 | `DEBUG` | No | Set to `true` for verbose error stacks |
 
 ---

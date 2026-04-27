@@ -19,6 +19,7 @@ export { harvestSession, SessionPool, createClientFromSession, DEFAULT_SESSION_T
 // Scraping functions
 export { scrapeProfile, scrapeProfileById, parseUserData } from './profile.js';
 export { scrapeTweets, scrapeTweetsAndReplies, scrapeTweetById, parseTweetData, parseTimelineInstructions } from './tweets.js';
+export { searchTweets, searchUsers, buildAdvancedQuery } from './search.js';
 export { scrapeThread, scrapeFullThread, scrapeConversation, parseConversationModule, reconstructThread } from './thread.js';
 export { scrapeFollowers, scrapeFollowing, scrapeNonFollowers, scrapeLikers, scrapeRetweeters, scrapeListMembers } from './relationships.js';
 
@@ -63,10 +64,11 @@ export async function createHttpScraper(options = {}) {
     await auth.loginWithCookies(options.cookies);
   }
 
-  const [profileMod, relationshipsMod, tweetsMod, threadMod, actionsMod, engagementMod, mediaMod] = await Promise.all([
+  const [profileMod, relationshipsMod, tweetsMod, searchMod, threadMod, actionsMod, engagementMod, mediaMod] = await Promise.all([
     import('./profile.js'),
     import('./relationships.js'),
     import('./tweets.js'),
+    import('./search.js'),
     import('./thread.js'),
     import('./actions.js'),
     import('./engagement.js'),
@@ -95,6 +97,9 @@ export async function createHttpScraper(options = {}) {
     scrapeTweetById: (tweetId) => tweetsMod.scrapeTweetById(client, tweetId),
     parseTweetData: tweetsMod.parseTweetData,
     parseTimelineInstructions: tweetsMod.parseTimelineInstructions,
+    searchTweets: (query, opts) => searchMod.searchTweets(client, query, opts),
+    searchUsers: (query, opts) => searchMod.searchUsers(client, query, opts),
+    buildAdvancedQuery: searchMod.buildAdvancedQuery,
 
     // Thread
     scrapeThread: (tweetId, opts) => threadMod.scrapeThread(client, tweetId, opts),
