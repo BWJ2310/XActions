@@ -13,8 +13,10 @@
 // Determine environment
 const isProduction = process.env.NODE_ENV === 'production';
 
-// Payment receiving address (override with X402_PAY_TO_ADDRESS env var)
-export const PAY_TO_ADDRESS = process.env.X402_PAY_TO_ADDRESS || '0x4027FdaC1a5216e264A00a5928b8366aE59cE888';
+// Payment receiving address. x402 is optional and must be enabled explicitly.
+// Keep this empty by default so self-hosted/local MCP remains free unless the
+// operator opts into pay-per-request access.
+export const PAY_TO_ADDRESS = process.env.X402_PAY_TO_ADDRESS || '';
 
 // Facilitator URL (testnet for development, mainnet for production)
 export const FACILITATOR_URL = process.env.X402_FACILITATOR_URL || 'https://x402.org/facilitator';
