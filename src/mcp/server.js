@@ -2328,6 +2328,52 @@ async function executeTool(name, args) {
   }
 }
 
+function asList(result, ...keys) {
+  if (Array.isArray(result)) return result;
+  for (const key of keys) {
+    if (Array.isArray(result?.[key])) return result[key];
+  }
+  return [];
+}
+
+function tweetIdFromUrl(url = '') {
+  return url.match(/\/status\/(\d+)/)?.[1] || null;
+}
+
+function usernameFromTweetUrl(url = '') {
+  try {
+    const parsed = new URL(url);
+    return parsed.pathname.split('/').filter(Boolean)[0] || null;
+  } catch {
+    return url.match(/(?:x|twitter)\.com\/([^/]+)/)?.[1] || null;
+  }
+}
+
+async function findTweetArticleById(page, tweetId) {
+  if (!tweetId) return null;
+  const articles = await page.$$('article[data-testid="tweet"]');
+  for (const article of articles) {
+    const matches = await article.evaluate((el, id) => {
+      return Array.from(el.querySelectorAll('a[href*="/status/"]'))
+        .some((a) => a.getAttribute('href')?.includes(`/status/${id}`));
+    }, tweetId);
+    if (matches) return article;
+  }
+  return null;
+}
+
+async function clickMenuItemByText(page, pattern) {
+  const items = await page.$$('[role="menuitem"]');
+  for (const item of items) {
+    const text = await item.evaluate((el) => el.textContent || '');
+    if (pattern.test(text)) {
+      await item.click();
+      return true;
+    }
+  }
+  return false;
+}
+
 /**
  * Execute xeepy-ported tools (scrapers, follow/unfollow automation, engagement, AI, monitoring)
  * Ported from github.com/nirholas/xeepy — Python → JavaScript
@@ -2350,25 +2396,32 @@ async function executeXeepyTool(name, args) {
     case 'x_get_replies': {
       const page = await localTools.getPage();
       const url = args.tweetUrl;
+      const tweetId = tweetIdFromUrl(url);
       await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
       await new Promise(r => setTimeout(r, 3000));
-      const replies = await page.evaluate((limit) => {
-        const articles = document.querySelectorAll('article[data-testid="tweet"]');
+      const replies = await page.evaluate(({ limit, tweetId }) => {
+        const articles = Array.from(document.querySelectorAll('article[data-testid="tweet"]'));
         const results = [];
-        // Skip first article (the original tweet)
-        for (let i = 1; i < articles.length && results.length < limit; i++) {
+        const targetIndex = tweetId
+          ? articles.findIndex((el) => Array.from(el.querySelectorAll('a[href*="/status/"]'))
+              .some((a) => a.getAttribute('href')?.includes(`/status/${tweetId}`)))
+          : 0;
+        if (tweetId && targetIndex === -1) return results;
+        for (let i = Math.max(0, targetIndex) + 1; i < articles.length && results.length < limit; i++) {
           const el = articles[i];
           const textEl = el.querySelector('[data-testid="tweetText"]');
           const userEl = el.querySelector('[data-testid="User-Name"]');
           const timeEl = el.querySelector('time');
+          const linkEl = el.querySelector('a[href*="/status/"]');
           results.push({
             text: textEl?.textContent || '',
             author: userEl?.textContent || '',
             timestamp: timeEl?.getAttribute('datetime') || '',
+            url: linkEl?.href || null,
           });
         }
         return results;
-      }, args.limit || 50);
+      }, { limit: args.limit || 50, tweetId });
       return { replies, count: replies.length };
     }
 
@@ -2382,7 +2435,8 @@ async function executeXeepyTool(name, args) {
 
     case 'x_get_likers': {
       const page = await localTools.getPage();
-      const tweetId = args.tweetUrl.split('/status/')[1]?.split(/[?/]/)[0];
+      const tweetId = tweetIdFromUrl(args.tweetUrl);
+      if (!tweetId) return { error: 'Invalid tweetUrl: expected a /status/<id> URL' };
       await page.goto(`https://x.com/i/status/${tweetId}/likes`, { waitUntil: 'networkidle2', timeout: 30000 });
       await new Promise(r => setTimeout(r, 3000));
       const likers = await page.evaluate((limit) => {
@@ -2398,7 +2452,8 @@ async function executeXeepyTool(name, args) {
 
     case 'x_get_retweeters': {
       const page = await localTools.getPage();
-      const tweetId = args.tweetUrl.split('/status/')[1]?.split(/[?/]/)[0];
+      const tweetId = tweetIdFromUrl(args.tweetUrl);
+      if (!tweetId) return { error: 'Invalid tweetUrl: expected a /status/<id> URL' };
       await page.goto(`https://x.com/i/status/${tweetId}/retweets`, { waitUntil: 'networkidle2', timeout: 30000 });
       await new Promise(r => setTimeout(r, 3000));
       const retweeters = await page.evaluate((limit) => {
@@ -2459,8 +2514,9 @@ async function executeXeepyTool(name, args) {
 
     case 'x_get_quote_tweets': {
       const page = await localTools.getPage();
-      const tweetId = args.tweetUrl.split('/status/')[1]?.split(/[?/]/)[0];
-      const user = args.tweetUrl.split('x.com/')[1]?.split('/')[0];
+      const tweetId = tweetIdFromUrl(args.tweetUrl);
+      const user = usernameFromTweetUrl(args.tweetUrl);
+      if (!tweetId || !user) return { error: 'Invalid tweetUrl: expected a user /status/<id> URL' };
       await page.goto(`https://x.com/${user}/status/${tweetId}/quotes`, { waitUntil: 'networkidle2', timeout: 30000 });
       await new Promise(r => setTimeout(r, 3000));
       const quotes = await page.evaluate((limit) => {
@@ -2469,7 +2525,8 @@ async function executeXeepyTool(name, args) {
           const textEl = el.querySelector('[data-testid="tweetText"]');
           const userEl = el.querySelector('[data-testid="User-Name"]');
           const timeEl = el.querySelector('time');
-          return { text: textEl?.textContent || '', author: userEl?.textContent || '', timestamp: timeEl?.getAttribute('datetime') || '' };
+          const linkEl = el.querySelector('a[href*="/status/"]');
+          return { text: textEl?.textContent || '', author: userEl?.textContent || '', timestamp: timeEl?.getAttribute('datetime') || '', url: linkEl?.href || null };
         });
       }, args.limit || 50);
       return { quotes, count: quotes.length };
@@ -2500,7 +2557,7 @@ async function executeXeepyTool(name, args) {
       });
       const users = [];
       const seen = new Set();
-      for (const tweet of (searchResults?.tweets || [])) {
+      for (const tweet of asList(searchResults, 'tweets', 'results')) {
         if (users.length >= (args.limit || 10)) break;
         const username = tweet.authorUsername || tweet.author;
         if (!username || seen.has(username)) continue;
@@ -2519,10 +2576,9 @@ async function executeXeepyTool(name, args) {
 
     case 'x_follow_engagers': {
       const tweets = await localTools.x_get_tweets?.({ username: args.username, limit: 10 });
-      const engagers = new Set();
       const followed = [];
       // Simplified — follow repliers from recent tweets
-      for (const tweet of (tweets?.tweets || []).slice(0, 5)) {
+      for (const tweet of asList(tweets, 'tweets').slice(0, 5)) {
         if (followed.length >= (args.limit || 10)) break;
         // Would scrape replies for full implementation
       }
@@ -2536,7 +2592,7 @@ async function executeXeepyTool(name, args) {
       }
       const following = await localTools.x_get_following?.({ username: 'me', limit: args.limit || 1000 });
       const unfollowed = [];
-      for (const user of (following?.users || [])) {
+      for (const user of asList(following, 'users', 'following')) {
         try {
           await localTools.x_unfollow?.({ username: user.username });
           unfollowed.push(user.username);
@@ -2552,7 +2608,7 @@ async function executeXeepyTool(name, args) {
       const toUnfollow = [];
       
       if (args.dryRun) {
-        return { message: `Dry run — would analyze ${following?.users?.length || 0} accounts with criteria: ${args.criteria}`, criteria: args.criteria };
+        return { message: `Dry run — would analyze ${asList(following, 'users', 'following').length} accounts with criteria: ${args.criteria}`, criteria: args.criteria };
       }
       
       const unfollowed = [];
@@ -2569,12 +2625,18 @@ async function executeXeepyTool(name, args) {
     // ── Engagement Automation ──
     case 'x_quote_tweet': {
       const page = await localTools.getPage();
+      const tweetId = tweetIdFromUrl(args.tweetUrl);
       await page.goto(args.tweetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-      // Click retweet button, select quote
-      await page.click('[data-testid="retweet"]').catch(() => {});
+      await new Promise(r => setTimeout(r, 2000));
+      const targetArticle = await findTweetArticleById(page, tweetId);
+      const scope = targetArticle || (tweetId ? null : page);
+      if (!scope) return { success: false, message: 'Could not find target tweet' };
+      const retweetButton = await scope.$('[data-testid="retweet"]');
+      if (!retweetButton) return { success: false, message: 'Could not find retweet button' };
+      await retweetButton.click();
       await new Promise(r => setTimeout(r, 1000));
-      const quoteOption = await page.$('text/Quote');
-      if (quoteOption) await quoteOption.click();
+      const quoteClicked = await clickMenuItemByText(page, /quote/i);
+      if (!quoteClicked) return { success: false, message: 'Could not open quote composer' };
       await new Promise(r => setTimeout(r, 1500));
       // Type the quote text
       const composer = await page.$('[data-testid="tweetTextarea_0"]');
@@ -2589,9 +2651,9 @@ async function executeXeepyTool(name, args) {
     case 'x_auto_comment': {
       const searchResults = await localTools.x_search_tweets?.({ query: args.query, limit: args.limit || 5 });
       const commented = [];
-      for (const tweet of (searchResults?.tweets || [])) {
+      for (const tweet of asList(searchResults, 'tweets', 'results')) {
         try {
-          await localTools.x_reply?.({ tweetUrl: tweet.url, text: args.comment });
+          await localTools.x_reply?.({ url: tweet.url, text: args.comment });
           commented.push(tweet.url);
           await new Promise(r => setTimeout(r, (args.delay || 5) * 1000));
         } catch (e) { /* skip */ }
@@ -2602,10 +2664,10 @@ async function executeXeepyTool(name, args) {
     case 'x_auto_retweet': {
       const searchResults = await localTools.x_search_tweets?.({ query: args.query, limit: args.limit || 5 });
       const retweeted = [];
-      for (const tweet of (searchResults?.tweets || [])) {
+      for (const tweet of asList(searchResults, 'tweets', 'results')) {
         if (args.minLikes && tweet.likes < args.minLikes) continue;
         try {
-          await localTools.x_retweet?.({ tweetUrl: tweet.url });
+          await localTools.x_retweet?.({ url: tweet.url });
           retweeted.push(tweet.url);
           await new Promise(r => setTimeout(r, (args.delay || 3) * 1000));
         } catch (e) { /* skip */ }
@@ -2629,8 +2691,9 @@ async function executeXeepyTool(name, args) {
         if (!profile.avatar || profile.avatar.includes('default_profile')) { signals.push('default_avatar'); botScore += 20; }
       }
       
-      if (tweets?.tweets) {
-        const texts = tweets.tweets.map(t => t.text);
+      const tweetItems = asList(tweets, 'tweets');
+      if (tweetItems.length) {
+        const texts = tweetItems.map(t => t.text);
         const uniqueTexts = new Set(texts);
         if (texts.length > 5 && uniqueTexts.size < texts.length * 0.5) {
           signals.push('repetitive_content'); botScore += 30;
@@ -2649,7 +2712,7 @@ async function executeXeepyTool(name, args) {
     case 'x_find_influencers': {
       const searchResults = await localTools.x_search_tweets?.({ query: args.niche, limit: 100 });
       const authorMap = new Map();
-      for (const tweet of (searchResults?.tweets || [])) {
+      for (const tweet of asList(searchResults, 'tweets', 'results')) {
         const username = tweet.authorUsername || tweet.author;
         if (!username) continue;
         if (!authorMap.has(username)) {
@@ -2674,7 +2737,7 @@ async function executeXeepyTool(name, args) {
       
       // Extract niche keywords from user's tweets
       const keywords = new Set();
-      for (const tweet of (tweets?.tweets || [])) {
+      for (const tweet of asList(tweets, 'tweets')) {
         const hashtags = tweet.text.match(/#\w+/g) || [];
         hashtags.forEach(h => keywords.add(h));
       }
@@ -2684,7 +2747,7 @@ async function executeXeepyTool(name, args) {
       
       const seen = new Set([args.username]);
       const result = [];
-      for (const tweet of (targets?.tweets || [])) {
+      for (const tweet of asList(targets, 'tweets', 'results')) {
         const u = tweet.authorUsername || tweet.author;
         if (!u || seen.has(u)) continue;
         seen.add(u);
@@ -2697,7 +2760,7 @@ async function executeXeepyTool(name, args) {
 
     case 'x_crypto_analyze': {
       const searchResults = await localTools.x_search_tweets?.({ query: args.query, limit: args.limit || 100 });
-      const tweets = searchResults?.tweets || [];
+      const tweets = asList(searchResults, 'tweets', 'results');
       
       let bullish = 0, bearish = 0, neutral = 0;
       const influencerMentions = new Map();
@@ -2747,9 +2810,15 @@ async function executeXeepyTool(name, args) {
       if (!imageUrl && args.tweetUrl) {
         // Scrape tweet to extract image
         const page = await localTools.getPage();
+        const tweetId = tweetIdFromUrl(args.tweetUrl);
         await page.goto(args.tweetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-        imageUrl = await page.evaluate(() => {
-          const img = document.querySelector('article img[src*="pbs.twimg.com/media"]');
+        await new Promise(r => setTimeout(r, 2000));
+        const targetArticle = await findTweetArticleById(page, tweetId);
+        const scope = targetArticle || (tweetId ? null : page);
+        if (!scope) throw new Error('Could not find target tweet for image analysis.');
+        imageUrl = await scope.evaluate((el) => {
+          const root = el?.querySelector ? el : document;
+          const img = root.querySelector('img[src*="pbs.twimg.com/media"]');
           return img?.src || null;
         });
       }
@@ -2783,7 +2852,8 @@ async function executeXeepyTool(name, args) {
       const profiles = [];
       
       // Sample a subset for deeper analysis
-      const sample = (followers?.users || []).slice(0, Math.min(20, args.sampleSize || 200));
+      const followerItems = asList(followers, 'users', 'followers');
+      const sample = followerItems.slice(0, Math.min(20, args.sampleSize || 200));
       for (const user of sample) {
         const profile = await localTools.x_get_profile?.({ username: user.username }).catch(() => null);
         if (profile) profiles.push(profile);
@@ -2805,7 +2875,7 @@ async function executeXeepyTool(name, args) {
       return {
         username: args.username,
         sampleSize: profiles.length,
-        totalFollowers: followers?.users?.length || 0,
+        totalFollowers: followerItems.length,
         avgFollowersPerFollower: profiles.length ? Math.round(totalFollowers / profiles.length) : 0,
         topLocations: Object.entries(locations).sort((a, b) => b[1] - a[1]).slice(0, 10),
         topInterests: Object.entries(interests).sort((a, b) => b[1] - a[1]).slice(0, 10),
@@ -2815,7 +2885,7 @@ async function executeXeepyTool(name, args) {
     case 'x_engagement_report': {
       const profile = await localTools.x_get_profile?.({ username: args.username });
       const tweets = await localTools.x_get_tweets?.({ username: args.username, limit: 50 });
-      const tweetList = tweets?.tweets || [];
+      const tweetList = asList(tweets, 'tweets');
       
       let totalLikes = 0, totalRetweets = 0, totalReplies = 0;
       let bestTweet = null, bestEngagement = 0;
@@ -2849,6 +2919,7 @@ async function executeXeepyTool(name, args) {
       // Take a snapshot of current state for comparison
       const profile = await localTools.x_get_profile?.({ username: args.username });
       const latestTweet = await localTools.x_get_tweets?.({ username: args.username, limit: 1 });
+      const latestTweets = asList(latestTweet, 'tweets');
       
       return {
         monitored: args.username,
@@ -2858,7 +2929,7 @@ async function executeXeepyTool(name, args) {
           followers: profile?.followers,
           following: profile?.following,
           bio: profile?.bio?.slice(0, 100),
-          latestTweet: latestTweet?.tweets?.[0]?.text?.slice(0, 100),
+          latestTweet: latestTweets[0]?.text?.slice(0, 100),
           capturedAt: new Date().toISOString(),
         },
         message: `Monitoring started. Compare future snapshots with this baseline to detect changes.`,
@@ -2869,29 +2940,31 @@ async function executeXeepyTool(name, args) {
       const keywords = args.keywords || [];
       const query = keywords.join(' OR ');
       const results = await localTools.x_search_tweets?.({ query, limit: 20 });
+      const resultTweets = asList(results, 'tweets', 'results');
       
       return {
         keywords,
         interval: `${args.interval || 10} minutes`,
-        currentMatches: results?.tweets?.length || 0,
-        latestTweets: (results?.tweets || []).slice(0, 5).map(t => ({
+        currentMatches: resultTweets.length,
+        latestTweets: resultTweets.slice(0, 5).map(t => ({
           text: t.text?.slice(0, 200),
           author: t.authorUsername || t.author,
           likes: t.likes,
           url: t.url,
         })),
-        message: `Monitoring ${keywords.length} keywords. ${results?.tweets?.length || 0} current matches found.`,
+        message: `Monitoring ${keywords.length} keywords. ${resultTweets.length} current matches found.`,
       };
     }
 
     case 'x_follower_alerts': {
       const followers = await localTools.x_get_followers?.({ username: args.username, limit: 500 });
+      const followerItems = asList(followers, 'users', 'followers');
       
       return {
         username: args.username,
         alertTypes: args.alertTypes || ['new_follower', 'unfollower', 'milestone', 'surge', 'drop'],
-        currentFollowerCount: followers?.users?.length || 0,
-        snapshot: (followers?.users || []).slice(0, 10).map(u => u.username),
+        currentFollowerCount: followerItems.length,
+        snapshot: followerItems.slice(0, 10).map(u => u.username),
         message: `Follower alerts configured. Save this snapshot and compare on next check to detect changes.`,
         capturedAt: new Date().toISOString(),
       };
@@ -2900,10 +2973,18 @@ async function executeXeepyTool(name, args) {
     case 'x_track_engagement': {
       if (args.tweetUrl) {
         const page = await localTools.getPage();
+        const tweetId = tweetIdFromUrl(args.tweetUrl);
         await page.goto(args.tweetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
         await new Promise(r => setTimeout(r, 2000));
-        const metrics = await page.evaluate(() => {
-          const article = document.querySelector('article[data-testid="tweet"]');
+        const targetArticle = await findTweetArticleById(page, tweetId);
+        const scope = targetArticle || (tweetId ? null : page);
+        if (!scope) {
+          return { tweetUrl: args.tweetUrl, metrics: null, error: 'Could not find target tweet', capturedAt: new Date().toISOString() };
+        }
+        const metrics = await scope.evaluate((el) => {
+          const article = el?.matches?.('article[data-testid="tweet"]')
+            ? el
+            : document.querySelector('article[data-testid="tweet"]');
           if (!article) return null;
           const getText = (testid) => article.querySelector(`[data-testid="${testid}"]`)?.textContent || '0';
           return {
@@ -2919,10 +3000,11 @@ async function executeXeepyTool(name, args) {
       // Account-level tracking
       const profile = await localTools.x_get_profile?.({ username: args.username });
       const tweets = await localTools.x_get_tweets?.({ username: args.username, limit: 10 });
+      const tweetItems = asList(tweets, 'tweets');
       return {
         username: args.username,
         followers: profile?.followers,
-        recentEngagement: (tweets?.tweets || []).slice(0, 5).map(t => ({
+        recentEngagement: tweetItems.slice(0, 5).map(t => ({
           text: t.text?.slice(0, 80),
           likes: t.likes,
           retweets: t.retweets,

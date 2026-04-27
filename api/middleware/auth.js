@@ -178,6 +178,8 @@ export {
   requireAdmin,
 };
 
+export default authMiddleware;
+
 // Also export authenticate as alias for authMiddleware for backward compatibility
 export const authenticate = authMiddleware;
 export const authenticateToken = authMiddleware;

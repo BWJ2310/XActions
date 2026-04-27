@@ -27,6 +27,7 @@ import {
   scrapeNotifications,
   scrapeTrending,
   scrapeSpaces,
+  scrape,
 } from '../scrapers/index.js';
 
 import fs from 'fs/promises';
@@ -39,6 +40,7 @@ import os from 'os';
 
 let browser = null;
 let page = null;
+let authenticatedCookie = null;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const randomDelay = (min = 1000, max = 3000) =>
@@ -48,7 +50,9 @@ const randomDelay = (min = 1000, max = 3000) =>
  * Ensure a browser/page pair is available, creating if needed.
  * Uses createBrowser/createPage from the canonical scrapers module.
  */
-async function ensureBrowser() {
+async function ensureBrowser({ authenticate = true } = {}) {
+  const envCookie = process.env.XACTIONS_SESSION_COOKIE;
+
   if (!browser || !browser.isConnected()) {
     if (browser) {
       try {
@@ -57,7 +61,14 @@ async function ensureBrowser() {
     }
     browser = await createBrowser();
     page = await createPage(browser);
+    authenticatedCookie = null;
   }
+
+  if (authenticate && envCookie && authenticatedCookie !== envCookie) {
+    await loginWithCookie(page, envCookie);
+    authenticatedCookie = envCookie;
+  }
+
   return { browser, page };
 }
 
@@ -71,7 +82,13 @@ export async function closeBrowser() {
     } catch {}
     browser = null;
     page = null;
+    authenticatedCookie = null;
   }
+}
+
+export async function getPage() {
+  const { page: pg } = await ensureBrowser();
+  return pg;
 }
 
 // ============================================================================
@@ -106,6 +123,36 @@ async function clickMenuItemByText(pg, pattern) {
     }
   }
   return false;
+}
+
+function tweetIdFromUrl(url) {
+  return url?.match(/\/status\/(\d+)/)?.[1] || null;
+}
+
+async function findTweetArticleByUrl(pg, url) {
+  const tweetId = tweetIdFromUrl(url);
+  if (!tweetId) return null;
+
+  const articles = await pg.$$('article[data-testid="tweet"]');
+  for (const article of articles) {
+    const matches = await article.evaluate((el, id) => {
+      return Array.from(el.querySelectorAll('a[href*="/status/"]'))
+        .some((a) => a.getAttribute('href')?.includes(`/status/${id}`));
+    }, tweetId);
+    if (matches) return article;
+  }
+
+  return null;
+}
+
+async function getTweetActionScope(pg, url) {
+  const tweetId = tweetIdFromUrl(url);
+  const targetArticle = await findTweetArticleByUrl(pg, url);
+  return {
+    tweetId,
+    targetArticle,
+    scope: targetArticle || (tweetId ? null : pg),
+  };
 }
 
 /**
@@ -143,8 +190,9 @@ async function scrollCollect(pg, extractFn, { limit = 100, maxRetries = 10 } = {
 // ============================================================================
 
 export async function x_login({ cookie }) {
-  const { page: pg } = await ensureBrowser();
+  const { page: pg } = await ensureBrowser({ authenticate: false });
   await loginWithCookie(pg, cookie);
+  authenticatedCookie = cookie;
   return { success: true, message: 'Logged in with session cookie' };
 }
 
@@ -345,24 +393,42 @@ export async function x_post_tweet({ text }) {
   return { success: false, message: 'Could not post tweet' };
 }
 
-export async function x_like({ url }) {
+export async function x_like({ url, tweetUrl }) {
+  url = url || tweetUrl;
   const { page: pg } = await ensureBrowser();
   await pg.goto(url, { waitUntil: 'networkidle2' });
   await randomDelay();
 
-  if (await clickIfPresent(pg, '[data-testid="like"]')) {
+  const { targetArticle, scope } = await getTweetActionScope(pg, url);
+  if (!scope) return { success: false, message: 'Could not find target tweet' };
+  if (targetArticle && await targetArticle.$('[data-testid="unlike"]')) {
+    return { success: true, message: 'Tweet already liked' };
+  }
+
+  const likeButton = await scope.$('[data-testid="like"]');
+  if (likeButton) {
+    await likeButton.click();
     await randomDelay();
     return { success: true, message: 'Tweet liked' };
   }
   return { success: false, message: 'Could not like tweet' };
 }
 
-export async function x_retweet({ url }) {
+export async function x_retweet({ url, tweetUrl }) {
+  url = url || tweetUrl;
   const { page: pg } = await ensureBrowser();
   await pg.goto(url, { waitUntil: 'networkidle2' });
   await randomDelay();
 
-  if (await clickIfPresent(pg, '[data-testid="retweet"]')) {
+  const { targetArticle, scope } = await getTweetActionScope(pg, url);
+  if (!scope) return { success: false, message: 'Could not find target tweet' };
+  if (targetArticle && await targetArticle.$('[data-testid="unretweet"]')) {
+    return { success: true, message: 'Tweet already retweeted' };
+  }
+
+  const retweetButton = await scope.$('[data-testid="retweet"]');
+  if (retweetButton) {
+    await retweetButton.click();
     await sleep(500);
     await clickIfPresent(pg, '[data-testid="retweetConfirm"]');
     await randomDelay();
@@ -375,14 +441,18 @@ export async function x_retweet({ url }) {
 // 15. Download Video
 // ============================================================================
 
-export async function x_download_video({ tweetUrl }) {
+export async function x_download_video({ tweetUrl, url }) {
+  tweetUrl = tweetUrl || url;
   const { page: pg } = await ensureBrowser();
   await pg.goto(tweetUrl, { waitUntil: 'networkidle2' });
   await randomDelay();
 
-  const videoUrls = await pg.evaluate(() => {
+  const targetArticle = await findTweetArticleByUrl(pg, tweetUrl);
+  const evalScope = targetArticle || pg;
+  const videoUrls = await evalScope.evaluate((el) => {
+    const root = el?.querySelectorAll ? el : document;
     const videos = [];
-    const html = document.documentElement.innerHTML;
+    const html = root === document ? document.documentElement.innerHTML : root.innerHTML;
     const patterns = [
       /https:\/\/video\.twimg\.com\/[^"'\s]+\.mp4[^"'\s]*/g,
       /https:\/\/[^"'\s]*\/amplify_video[^"'\s]*\.mp4[^"'\s]*/g,
@@ -568,13 +638,19 @@ export async function x_schedule_post({ text, scheduledAt }) {
   return { success: false, message: 'Could not schedule tweet' };
 }
 
-export async function x_delete_tweet({ url }) {
+export async function x_delete_tweet({ url, tweetUrl }) {
+  url = url || tweetUrl;
   const { page: pg } = await ensureBrowser();
   await pg.goto(url, { waitUntil: 'networkidle2' });
   await randomDelay();
 
   // Open the caret "⋯" menu on the tweet
-  if (await clickIfPresent(pg, '[data-testid="caret"]')) {
+  const { scope } = await getTweetActionScope(pg, url);
+  if (!scope) return { success: false, message: 'Could not find target tweet' };
+
+  const caret = await scope.$('[data-testid="caret"]');
+  if (caret) {
+    await caret.click();
     await sleep(500);
     // Click "Delete" from dropdown
     if (await clickMenuItemByText(pg, /delete/i)) {
@@ -592,10 +668,20 @@ export async function x_delete_tweet({ url }) {
 // 21–25. Engagement
 // ============================================================================
 
-export async function x_reply({ url, text }) {
+export async function x_reply({ url, tweetUrl, text }) {
+  url = url || tweetUrl;
   const { page: pg } = await ensureBrowser();
   await pg.goto(url, { waitUntil: 'networkidle2' });
   await randomDelay();
+
+  const { scope } = await getTweetActionScope(pg, url);
+  if (!scope) return { success: false, message: 'Could not find target tweet' };
+
+  const replyButton = await scope.$('[data-testid="reply"]');
+  if (replyButton) {
+    await replyButton.click();
+    await sleep(1000);
+  }
 
   const replyBox = await pg.$('[data-testid="tweetTextarea_0"]');
   if (replyBox) {
@@ -613,12 +699,21 @@ export async function x_reply({ url, text }) {
   return { success: false, message: 'Could not reply to tweet' };
 }
 
-export async function x_bookmark({ url }) {
+export async function x_bookmark({ url, tweetUrl }) {
+  url = url || tweetUrl;
   const { page: pg } = await ensureBrowser();
   await pg.goto(url, { waitUntil: 'networkidle2' });
   await randomDelay();
 
-  if (await clickIfPresent(pg, '[data-testid="bookmark"]')) {
+  const { targetArticle, scope } = await getTweetActionScope(pg, url);
+  if (!scope) return { success: false, message: 'Could not find target tweet' };
+  if (targetArticle && await targetArticle.$('[data-testid="removeBookmark"]')) {
+    return { success: true, message: 'Tweet already bookmarked' };
+  }
+
+  const bookmarkButton = await scope.$('[data-testid="bookmark"]');
+  if (bookmarkButton) {
+    await bookmarkButton.click();
     await randomDelay();
     return { success: true, message: 'Tweet bookmarked' };
   }
@@ -1010,15 +1105,22 @@ export async function x_get_analytics({ period = '28d' }) {
   return { period, analytics };
 }
 
-export async function x_get_post_analytics({ url }) {
+export async function x_get_post_analytics({ url, tweetUrl }) {
+  url = url || tweetUrl;
   const { page: pg } = await ensureBrowser();
   await pg.goto(url, { waitUntil: 'networkidle2' });
   await randomDelay();
 
-  const analytics = await pg.evaluate(() => {
-    const article = document.querySelector('article[data-testid="tweet"]');
-    if (!article) return null;
+  const targetArticle = await findTweetArticleByUrl(pg, url);
+  if (tweetIdFromUrl(url) && !targetArticle) {
+    return { success: false, message: 'Could not find target tweet' };
+  }
 
+  const analytics = await (targetArticle || pg).evaluate((el) => {
+    const article = el?.matches?.('article[data-testid="tweet"]')
+      ? el
+      : document.querySelector('article[data-testid="tweet"]');
+    if (!article) return null;
     const stat = (testid) =>
       article.querySelector(`[data-testid="${testid}"] span span`)?.textContent || '0';
 
@@ -1332,10 +1434,66 @@ export async function x_client_get_trends() {
 }
 
 // ============================================================================
+// Cross-Platform Scraping Tools
+// ============================================================================
+
+export async function x_get_profile_multiplatform({ username, platform = 'twitter', instance }) {
+  if (platform === 'twitter' || platform === 'x') {
+    return x_get_profile({ username });
+  }
+
+  return scrape(platform, 'profile', { username, instance });
+}
+
+export async function x_get_followers_multiplatform({ username, platform = 'twitter', limit = 100, instance }) {
+  if (platform === 'twitter' || platform === 'x') {
+    return x_get_followers({ username, limit });
+  }
+
+  return scrape(platform, 'followers', { username, limit, instance });
+}
+
+export async function x_get_following_multiplatform({ username, platform = 'twitter', limit = 100, instance }) {
+  if (platform === 'twitter' || platform === 'x') {
+    return x_get_following({ username, limit });
+  }
+
+  return scrape(platform, 'following', { username, limit, instance });
+}
+
+export async function x_get_tweets_multiplatform({ username, platform = 'twitter', limit = 50, instance }) {
+  if (platform === 'twitter' || platform === 'x') {
+    return x_get_tweets({ username, limit });
+  }
+
+  return scrape(platform, 'tweets', { username, limit, instance });
+}
+
+export async function x_search_tweets_multiplatform({ query, platform = 'twitter', limit = 50, instance }) {
+  if (platform === 'twitter' || platform === 'x') {
+    return x_search_tweets({ query, limit });
+  }
+
+  return scrape(platform, 'search', { query, limit, instance });
+}
+
+export async function x_list_platforms() {
+  return {
+    platforms: [
+      { name: 'twitter', aliases: ['x'], description: 'X/Twitter - Puppeteer-based scraping', requiresAuth: true },
+      { name: 'bluesky', aliases: ['bsky'], description: 'Bluesky - AT Protocol API', requiresAuth: false },
+      { name: 'mastodon', aliases: ['masto'], description: 'Mastodon - REST API for any instance', requiresAuth: false },
+      { name: 'threads', aliases: [], description: 'Threads - Puppeteer-based scraping', requiresAuth: false },
+    ],
+  };
+}
+
+// ============================================================================
 // Tool Map — all tools matching server.js TOOLS (excluding streaming)
 // ============================================================================
 
 export const toolMap = {
+  getPage,
   // Auth
   x_login,
   // Scraping (delegated to scrapers/index.js — single source of truth)
@@ -1412,6 +1570,13 @@ export const toolMap = {
   x_client_send_tweet,
   x_client_get_followers,
   x_client_get_trends,
+  // Cross-platform
+  x_get_profile_multiplatform,
+  x_get_followers_multiplatform,
+  x_get_following_multiplatform,
+  x_get_tweets_multiplatform,
+  x_search_tweets_multiplatform,
+  x_list_platforms,
   // Utility (not an MCP tool, used by server.js cleanup)
   closeBrowser,
 };
