@@ -161,17 +161,12 @@ For scheduled agents or multiple MCP clients, run one long-lived XActions server
 On the machine that should host XActions:
 
 ```bash
-export MCP_TRANSPORT=http
-export MCP_HOST=0.0.0.0
-export PORT=3344
-export XACTIONS_MODE=local
-export XACTIONS_SESSION_COOKIE="your_auth_token_here"
-export XACTIONS_MCP_BEARER_TOKEN="use-a-long-random-token"
-export XACTIONS_SERIALIZE_LOCAL_TOOLS=true
-export XACTIONS_BROWSER_IDLE_MS=900000
-
-node src/mcp/server.js
+cp .env.mcp.example .env.mcp
+$EDITOR .env.mcp
+npm run mcp:lan
 ```
+
+Fill `XACTIONS_SESSION_COOKIE` with the X `auth_token` cookie and `XACTIONS_MCP_BEARER_TOKEN` with a long random token. You can generate the bearer token with `openssl rand -hex 32`.
 
 Then point your MCP client at:
 

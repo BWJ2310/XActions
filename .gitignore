@@ -37,6 +37,7 @@ tmp/
 
 # Environment files
 .env
+.env.mcp
 .env.local
 .env*.local
 .env.development
