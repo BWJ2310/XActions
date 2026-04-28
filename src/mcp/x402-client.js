@@ -483,6 +483,7 @@ export async function createX402Client(config) {
     x_schedule_post: '/api/ai/posting/schedule',
     x_delete_tweet: '/api/ai/posting/delete',
     x_reply: '/api/ai/posting/reply',
+    x_comment: '/api/ai/posting/reply',
     x_bookmark: '/api/ai/posting/bookmark',
     x_get_bookmarks: '/api/ai/posting/bookmarks',
     x_clear_bookmarks: '/api/ai/posting/clear-bookmarks',

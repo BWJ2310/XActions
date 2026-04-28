@@ -461,6 +461,18 @@ const TOOLS = [
     },
   },
   {
+    name: 'x_comment',
+    description: 'Comment under a specific tweet/post URL. Uses the reply composer and never creates a standalone post.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'URL of the tweet/post to comment under' },
+        text: { type: 'string', description: 'Comment text' },
+      },
+      required: ['url', 'text'],
+    },
+  },
+  {
     name: 'x_bookmark',
     description: 'Bookmark a tweet.',
     inputSchema: {
@@ -4099,7 +4111,7 @@ function printBanner(pluginCount, pluginToolCount) {
   const categories = {
     'Scraping':  ['x_get_profile', 'x_get_followers', 'x_get_following', 'x_get_tweets', 'x_search_tweets', 'x_get_thread', 'x_download_video'],
     'Analysis':  ['x_detect_unfollowers', 'x_analyze_sentiment', 'x_best_time_to_post', 'x_competitor_analysis', 'x_brand_monitor'],
-    'Actions':   ['x_follow', 'x_unfollow', 'x_like', 'x_post_tweet', 'x_post_thread', 'x_reply'],
+    'Actions':   ['x_follow', 'x_unfollow', 'x_like', 'x_post_tweet', 'x_post_thread', 'x_reply', 'x_comment'],
     'AI':        ['x_analyze_voice', 'x_generate_tweet', 'x_summarize_thread'],
   };
 

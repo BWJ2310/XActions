@@ -181,31 +181,37 @@ async function clickMenuItemByText(pg, pattern) {
   return false;
 }
 
-async function findReplyDialog(pg, { timeout = 5000 } = {}) {
+async function findReplyComposerScope(pg, { timeout = 8000 } = {}) {
   try {
     await pg.waitForFunction(() => {
-      return Array.from(document.querySelectorAll('[role="dialog"]')).some((dialog) => {
-        const textbox = dialog.querySelector('[data-testid="tweetTextarea_0"], [data-testid^="tweetTextarea_"]');
-        const button = dialog.querySelector('[data-testid="tweetButtonInline"], [data-testid="tweetButton"]');
-        const dialogText = (dialog.textContent || '').toLowerCase();
-        const buttonText = `${button?.textContent || ''} ${button?.getAttribute('aria-label') || ''}`.toLowerCase();
-        return textbox && button && (dialogText.includes('replying to') || buttonText.includes('reply'));
+      return Array.from(document.querySelectorAll('[role="dialog"], [data-testid="primaryColumn"]')).some((scope) => {
+        const textbox = scope.querySelector('[data-testid="tweetTextarea_0"], [data-testid^="tweetTextarea_"]');
+        const buttons = Array.from(scope.querySelectorAll('[data-testid="tweetButtonInline"], [data-testid="tweetButton"]'));
+        const scopeText = (scope.textContent || '').toLowerCase();
+        const hasReplyButton = buttons.some((button) => {
+          const buttonText = `${button.textContent || ''} ${button.getAttribute('aria-label') || ''}`.toLowerCase();
+          return buttonText.includes('reply');
+        });
+        return textbox && buttons.length > 0 && (scopeText.includes('replying to') || hasReplyButton);
       });
     }, { timeout });
   } catch {
     return null;
   }
 
-  const dialogs = await pg.$$('[role="dialog"]');
-  for (const dialog of dialogs) {
-    const isReplyDialog = await dialog.evaluate((el) => {
+  const scopes = await pg.$$('[role="dialog"], [data-testid="primaryColumn"]');
+  for (const scope of scopes) {
+    const isReplyComposer = await scope.evaluate((el) => {
       const textbox = el.querySelector('[data-testid="tweetTextarea_0"], [data-testid^="tweetTextarea_"]');
-      const button = el.querySelector('[data-testid="tweetButtonInline"], [data-testid="tweetButton"]');
-      const dialogText = (el.textContent || '').toLowerCase();
-      const buttonText = `${button?.textContent || ''} ${button?.getAttribute('aria-label') || ''}`.toLowerCase();
-      return Boolean(textbox && button && (dialogText.includes('replying to') || buttonText.includes('reply')));
+      const buttons = Array.from(el.querySelectorAll('[data-testid="tweetButtonInline"], [data-testid="tweetButton"]'));
+      const scopeText = (el.textContent || '').toLowerCase();
+      const hasReplyButton = buttons.some((button) => {
+        const buttonText = `${button.textContent || ''} ${button.getAttribute('aria-label') || ''}`.toLowerCase();
+        return buttonText.includes('reply');
+      });
+      return Boolean(textbox && buttons.length > 0 && (scopeText.includes('replying to') || hasReplyButton));
     });
-    if (isReplyDialog) return dialog;
+    if (isReplyComposer) return scope;
   }
 
   return null;
@@ -805,31 +811,32 @@ export async function x_delete_tweet({ url, tweetUrl }) {
 
 export async function x_reply({ url, tweetUrl, text }) {
   url = url || tweetUrl;
+  const tweetId = tweetIdFromUrl(url);
+  if (!tweetId) return { success: false, message: 'Invalid tweet URL: expected /status/<id>' };
+
   const { page: pg } = await ensureBrowser();
-  await pg.goto(url, { waitUntil: 'networkidle2' });
+  await pg.goto(`https://x.com/intent/tweet?in_reply_to=${encodeURIComponent(tweetId)}`, {
+    waitUntil: 'networkidle2',
+  });
   await randomDelay();
 
-  const { scope } = await getTweetActionScope(pg, url);
-  if (!scope) return { success: false, message: 'Could not find target tweet' };
+  const replyScope = await findReplyComposerScope(pg);
+  if (!replyScope) return { success: false, message: 'Could not open reply composer for target tweet' };
 
-  const replyButton = await scope.$('[data-testid="reply"]');
-  if (!replyButton) return { success: false, message: 'Could not find reply button on target tweet' };
-  await replyButton.click();
-  await sleep(1000);
-
-  const replyDialog = await findReplyDialog(pg);
-  if (!replyDialog) return { success: false, message: 'Could not open reply composer for target tweet' };
-
-  const replyBox = await replyDialog.$('[data-testid="tweetTextarea_0"], [data-testid^="tweetTextarea_"]');
+  const replyBox = await replyScope.$('[data-testid="tweetTextarea_0"], [data-testid^="tweetTextarea_"]');
   if (replyBox) {
     await replyBox.type(text, { delay: 50 });
     await sleep(500);
-    if (await clickTweetButtonInScope(replyDialog)) {
+    if (await clickTweetButtonInScope(replyScope)) {
       await randomDelay();
-      return { success: true, message: 'Reply posted' };
+      return { success: true, message: 'Reply posted', targetUrl: url, targetTweetId: tweetId };
     }
   }
   return { success: false, message: 'Could not reply to tweet' };
+}
+
+export async function x_comment(args) {
+  return x_reply(args);
 }
 
 export async function x_bookmark({ url, tweetUrl }) {
@@ -1658,6 +1665,7 @@ export const toolMap = {
   x_delete_tweet,
   // Engagement
   x_reply,
+  x_comment,
   x_bookmark,
   x_get_bookmarks,
   x_clear_bookmarks,

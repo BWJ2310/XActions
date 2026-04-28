@@ -60,6 +60,7 @@ export const MCP_TOOL_PRICES = {
   x_post_tweet:               '$0.005',
   x_post_thread:              '$0.01',
   x_reply:                    '$0.005',
+  x_comment:                  '$0.005',
   x_retweet:                  '$0.002',
   x_quote_tweet:              '$0.005',
   x_bookmark:                 '$0.002',
