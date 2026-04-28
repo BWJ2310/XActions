@@ -835,10 +835,6 @@ export async function x_reply({ url, tweetUrl, text }) {
   return { success: false, message: 'Could not reply to tweet' };
 }
 
-export async function x_comment(args) {
-  return x_reply(args);
-}
-
 export async function x_bookmark({ url, tweetUrl }) {
   url = url || tweetUrl;
   const { page: pg } = await ensureBrowser();
@@ -1665,7 +1661,6 @@ export const toolMap = {
   x_delete_tweet,
   // Engagement
   x_reply,
-  x_comment,
   x_bookmark,
   x_get_bookmarks,
   x_clear_bookmarks,
