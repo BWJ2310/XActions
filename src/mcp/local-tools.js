@@ -181,6 +181,55 @@ async function clickMenuItemByText(pg, pattern) {
   return false;
 }
 
+async function findReplyDialog(pg, { timeout = 5000 } = {}) {
+  try {
+    await pg.waitForFunction(() => {
+      return Array.from(document.querySelectorAll('[role="dialog"]')).some((dialog) => {
+        const textbox = dialog.querySelector('[data-testid="tweetTextarea_0"], [data-testid^="tweetTextarea_"]');
+        const button = dialog.querySelector('[data-testid="tweetButtonInline"], [data-testid="tweetButton"]');
+        const dialogText = (dialog.textContent || '').toLowerCase();
+        const buttonText = `${button?.textContent || ''} ${button?.getAttribute('aria-label') || ''}`.toLowerCase();
+        return textbox && button && (dialogText.includes('replying to') || buttonText.includes('reply'));
+      });
+    }, { timeout });
+  } catch {
+    return null;
+  }
+
+  const dialogs = await pg.$$('[role="dialog"]');
+  for (const dialog of dialogs) {
+    const isReplyDialog = await dialog.evaluate((el) => {
+      const textbox = el.querySelector('[data-testid="tweetTextarea_0"], [data-testid^="tweetTextarea_"]');
+      const button = el.querySelector('[data-testid="tweetButtonInline"], [data-testid="tweetButton"]');
+      const dialogText = (el.textContent || '').toLowerCase();
+      const buttonText = `${button?.textContent || ''} ${button?.getAttribute('aria-label') || ''}`.toLowerCase();
+      return Boolean(textbox && button && (dialogText.includes('replying to') || buttonText.includes('reply')));
+    });
+    if (isReplyDialog) return dialog;
+  }
+
+  return null;
+}
+
+async function clickTweetButtonInScope(scope) {
+  const buttons = await scope.$$('[data-testid="tweetButtonInline"], [data-testid="tweetButton"]');
+  let button = null;
+  for (const candidate of buttons) {
+    const canSubmitReply = await candidate.evaluate((el) => {
+      const label = `${el.textContent || ''} ${el.getAttribute('aria-label') || ''}`.toLowerCase();
+      const disabled = el.hasAttribute('disabled') || el.getAttribute('aria-disabled') === 'true';
+      return !disabled && (label.includes('reply') || label.includes('post'));
+    });
+    if (canSubmitReply) {
+      button = candidate;
+      break;
+    }
+  }
+  if (!button) return false;
+  await button.click();
+  return true;
+}
+
 function tweetIdFromUrl(url) {
   return url?.match(/\/status\/(\d+)/)?.[1] || null;
 }
@@ -764,20 +813,18 @@ export async function x_reply({ url, tweetUrl, text }) {
   if (!scope) return { success: false, message: 'Could not find target tweet' };
 
   const replyButton = await scope.$('[data-testid="reply"]');
-  if (replyButton) {
-    await replyButton.click();
-    await sleep(1000);
-  }
+  if (!replyButton) return { success: false, message: 'Could not find reply button on target tweet' };
+  await replyButton.click();
+  await sleep(1000);
 
-  const replyBox = await pg.$('[data-testid="tweetTextarea_0"]');
+  const replyDialog = await findReplyDialog(pg);
+  if (!replyDialog) return { success: false, message: 'Could not open reply composer for target tweet' };
+
+  const replyBox = await replyDialog.$('[data-testid="tweetTextarea_0"], [data-testid^="tweetTextarea_"]');
   if (replyBox) {
     await replyBox.type(text, { delay: 50 });
     await sleep(500);
-    // Try inline button first, then regular
-    if (
-      (await clickIfPresent(pg, '[data-testid="tweetButtonInline"]')) ||
-      (await clickIfPresent(pg, '[data-testid="tweetButton"]'))
-    ) {
+    if (await clickTweetButtonInScope(replyDialog)) {
       await randomDelay();
       return { success: true, message: 'Reply posted' };
     }
