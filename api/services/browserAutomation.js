@@ -21,6 +21,14 @@ puppeteer.use(StealthPlugin());
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const randomDelay = (min = 1000, max = 3000) => sleep(min + Math.random() * (max - min));
+const DEFAULT_NAVIGATION_TIMEOUT_MS = 15_000;
+
+async function gotoX(page, url) {
+  return page.goto(url, {
+    waitUntil: 'domcontentloaded',
+    timeout: DEFAULT_NAVIGATION_TIMEOUT_MS,
+  });
+}
 
 // Browser instance management (singleton)
 let browserInstance = null;
@@ -122,7 +130,7 @@ export async function scrapeProfile(sessionCookie, username) {
   const page = await getAuthenticatedPage(sessionCookie);
   
   try {
-    await page.goto(`https://x.com/${username}`, { waitUntil: 'networkidle2' });
+    await gotoX(page, `https://x.com/${username}`);
     await randomDelay();
 
     const profile = await page.evaluate(() => {
@@ -178,7 +186,7 @@ export async function scrapeFollowers(sessionCookie, username, options = {}) {
   const page = await getAuthenticatedPage(sessionCookie);
 
   try {
-    await page.goto(`https://x.com/${username}/followers`, { waitUntil: 'networkidle2' });
+    await gotoX(page, `https://x.com/${username}/followers`);
     await randomDelay();
 
     const users = new Map();
@@ -247,7 +255,7 @@ export async function scrapeFollowing(sessionCookie, username, options = {}) {
   const page = await getAuthenticatedPage(sessionCookie);
 
   try {
-    await page.goto(`https://x.com/${username}/following`, { waitUntil: 'networkidle2' });
+    await gotoX(page, `https://x.com/${username}/following`);
     await randomDelay();
 
     const users = new Map();
@@ -321,7 +329,7 @@ export async function scrapeTweets(sessionCookie, username, options = {}) {
       ? `https://x.com/${username}/with_replies`
       : `https://x.com/${username}`;
       
-    await page.goto(url, { waitUntil: 'networkidle2' });
+    await gotoX(page, url);
     await randomDelay();
 
     const tweets = new Map();
@@ -413,9 +421,7 @@ export async function searchTweets(sessionCookie, query, options = {}) {
     const encodedQuery = encodeURIComponent(query);
     const f = filterMap[filter] || 'live';
     
-    await page.goto(`https://x.com/search?q=${encodedQuery}&src=typed_query&f=${f}`, {
-      waitUntil: 'networkidle2',
-    });
+    await gotoX(page, `https://x.com/search?q=${encodedQuery}&src=typed_query&f=${f}`);
     await randomDelay();
 
     const tweets = new Map();
@@ -490,7 +496,7 @@ export async function scrapeThread(sessionCookie, tweetId) {
   const page = await getAuthenticatedPage(sessionCookie);
 
   try {
-    await page.goto(`https://x.com/i/status/${tweetId}`, { waitUntil: 'networkidle2' });
+    await gotoX(page, `https://x.com/i/status/${tweetId}`);
     await randomDelay();
 
     // Scroll to load full thread
@@ -583,7 +589,7 @@ export async function scrapeMedia(sessionCookie, username, options = {}) {
   const page = await getAuthenticatedPage(sessionCookie);
 
   try {
-    await page.goto(`https://x.com/${username}/media`, { waitUntil: 'networkidle2' });
+    await gotoX(page, `https://x.com/${username}/media`);
     await randomDelay();
 
     const media = [];
@@ -661,7 +667,7 @@ export async function scrapeTweetLikes(sessionCookie, tweetId, options = {}) {
   const page = await getAuthenticatedPage(sessionCookie);
 
   try {
-    await page.goto(`https://x.com/i/status/${tweetId}/likes`, { waitUntil: 'networkidle2' });
+    await gotoX(page, `https://x.com/i/status/${tweetId}/likes`);
     await randomDelay();
 
     const users = new Map();
@@ -730,7 +736,7 @@ export async function scrapeTweetRetweets(sessionCookie, tweetId, options = {}) 
   const page = await getAuthenticatedPage(sessionCookie);
 
   try {
-    await page.goto(`https://x.com/i/status/${tweetId}/retweets`, { waitUntil: 'networkidle2' });
+    await gotoX(page, `https://x.com/i/status/${tweetId}/retweets`);
     await randomDelay();
 
     const users = new Map();
@@ -798,7 +804,7 @@ export async function scrapeBookmarks(sessionCookie, options = {}) {
   const page = await getAuthenticatedPage(sessionCookie);
 
   try {
-    await page.goto('https://x.com/i/bookmarks', { waitUntil: 'networkidle2' });
+    await gotoX(page, 'https://x.com/i/bookmarks');
     await randomDelay();
 
     const bookmarks = new Map();
@@ -870,7 +876,7 @@ export async function scrapeTweetDetails(sessionCookie, tweetId) {
   const page = await getAuthenticatedPage(sessionCookie);
 
   try {
-    await page.goto(`https://x.com/i/status/${tweetId}`, { waitUntil: 'networkidle2' });
+    await gotoX(page, `https://x.com/i/status/${tweetId}`);
     await randomDelay();
 
     const tweet = await page.evaluate(() => {
@@ -930,7 +936,7 @@ export async function extractVideoUrls(sessionCookie, tweetId) {
   const page = await getAuthenticatedPage(sessionCookie);
 
   try {
-    await page.goto(`https://x.com/i/status/${tweetId}`, { waitUntil: 'networkidle2' });
+    await gotoX(page, `https://x.com/i/status/${tweetId}`);
     await randomDelay();
 
     // Click on video to ensure it loads

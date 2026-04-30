@@ -30,6 +30,14 @@ puppeteer.use(StealthPlugin());
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const randomDelay = (min = 1000, max = 3000) => sleep(min + Math.random() * (max - min));
+const DEFAULT_NAVIGATION_TIMEOUT_MS = 15_000;
+
+async function gotoX(page, url, timeout = DEFAULT_NAVIGATION_TIMEOUT_MS) {
+  return page.goto(url, {
+    waitUntil: 'domcontentloaded',
+    timeout,
+  });
+}
 
 /**
  * Create a browser instance with stealth settings.
@@ -125,7 +133,10 @@ export async function loginWithCookie(page, authToken) {
       httpOnly: true,
       secure: true,
     });
-    await adapter.goto(page, 'https://x.com/home', { waitUntil: 'networkidle' });
+    await adapter.goto(page, 'https://x.com/home', {
+      waitUntil: 'domcontentloaded',
+      timeout: DEFAULT_NAVIGATION_TIMEOUT_MS,
+    });
     return page;
   }
 
@@ -137,7 +148,7 @@ export async function loginWithCookie(page, authToken) {
     httpOnly: true,
     secure: true,
   });
-  await page.goto('https://x.com/home', { waitUntil: 'networkidle2' });
+  await gotoX(page, 'https://x.com/home');
   return page;
 }
 
@@ -149,7 +160,7 @@ export async function loginWithCookie(page, authToken) {
  * Scrape profile information for a user
  */
 export async function scrapeProfile(page, username) {
-  await page.goto(`https://x.com/${username}`, { waitUntil: 'networkidle2' });
+  await gotoX(page, `https://x.com/${username}`);
   await randomDelay();
 
   const profile = await page.evaluate(() => {
@@ -199,7 +210,7 @@ export async function scrapeProfile(page, username) {
 export async function scrapeFollowers(page, username, options = {}) {
   const { limit = 1000, onProgress } = options;
   
-  await page.goto(`https://x.com/${username}/followers`, { waitUntil: 'networkidle2' });
+  await gotoX(page, `https://x.com/${username}/followers`);
   await randomDelay();
 
   const followers = new Map();
@@ -260,7 +271,7 @@ export async function scrapeFollowers(page, username, options = {}) {
 export async function scrapeFollowing(page, username, options = {}) {
   const { limit = 1000, onProgress } = options;
   
-  await page.goto(`https://x.com/${username}/following`, { waitUntil: 'networkidle2' });
+  await gotoX(page, `https://x.com/${username}/following`);
   await randomDelay();
 
   const following = new Map();
@@ -323,7 +334,7 @@ export async function scrapeTweets(page, username, options = {}) {
     ? `https://x.com/${username}/with_replies`
     : `https://x.com/${username}`;
     
-  await page.goto(url, { waitUntil: 'networkidle2' });
+  await gotoX(page, url);
   await randomDelay();
 
   const tweets = new Map();
@@ -408,10 +419,7 @@ export async function searchTweets(page, query, options = {}) {
   const encodedQuery = encodeURIComponent(query);
   const f = filterMap[filter] || 'live';
   
-  await page.goto(`https://x.com/search?q=${encodedQuery}&src=typed_query&f=${f}`, {
-    waitUntil: 'domcontentloaded',
-    timeout: 20000,
-  });
+  await gotoX(page, `https://x.com/search?q=${encodedQuery}&src=typed_query&f=${f}`, 20_000);
   await page.waitForSelector('article[data-testid="tweet"]', { timeout: 10000 }).catch(() => {});
   await sleep(750);
 
@@ -473,7 +481,7 @@ export async function searchTweets(page, query, options = {}) {
  * Scrape a full tweet thread
  */
 export async function scrapeThread(page, tweetUrl) {
-  await page.goto(tweetUrl, { waitUntil: 'networkidle2' });
+  await gotoX(page, tweetUrl);
   await randomDelay();
 
   for (let i = 0; i < 5; i++) {
@@ -526,7 +534,7 @@ export async function scrapeLikes(page, tweetUrl, options = {}) {
   const { limit = 100 } = options;
   
   const likesUrl = tweetUrl.replace(/\/status\//, '/status/') + '/likes';
-  await page.goto(likesUrl, { waitUntil: 'networkidle2' });
+  await gotoX(page, likesUrl);
   await randomDelay();
 
   const users = new Map();
@@ -592,7 +600,7 @@ export async function scrapeHashtag(page, hashtag, options = {}) {
 export async function scrapeMedia(page, username, options = {}) {
   const { limit = 100 } = options;
   
-  await page.goto(`https://x.com/${username}/media`, { waitUntil: 'networkidle2' });
+  await gotoX(page, `https://x.com/${username}/media`);
   await randomDelay();
 
   const media = [];
@@ -653,7 +661,7 @@ export async function scrapeListMembers(page, listUrl, options = {}) {
   const { limit = 500 } = options;
   
   const membersUrl = listUrl.endsWith('/members') ? listUrl : `${listUrl}/members`;
-  await page.goto(membersUrl, { waitUntil: 'networkidle2' });
+  await gotoX(page, membersUrl);
   await randomDelay();
 
   const members = new Map();
@@ -705,7 +713,7 @@ export async function scrapeListMembers(page, listUrl, options = {}) {
 export async function scrapeBookmarks(page, options = {}) {
   const { limit = 100, scrollDelay = 2000 } = options;
   
-  await page.goto('https://x.com/i/bookmarks', { waitUntil: 'networkidle2' });
+  await gotoX(page, 'https://x.com/i/bookmarks');
   await randomDelay(2000, 3000);
   
   const bookmarks = [];
@@ -756,7 +764,7 @@ export async function scrapeNotifications(page, options = {}) {
     ? 'https://x.com/notifications/mentions'
     : 'https://x.com/notifications';
   
-  await page.goto(url, { waitUntil: 'networkidle2' });
+  await gotoX(page, url);
   await randomDelay(2000, 3000);
   
   const notifications = [];
@@ -800,7 +808,7 @@ export async function scrapeNotifications(page, options = {}) {
 export async function scrapeTrending(page, options = {}) {
   const { limit = 30 } = options;
   
-  await page.goto('https://x.com/explore/tabs/trending', { waitUntil: 'networkidle2' });
+  await gotoX(page, 'https://x.com/explore/tabs/trending');
   await randomDelay(2000, 3000);
   
   for (let i = 0; i < 3; i++) {
@@ -836,7 +844,7 @@ export async function scrapeCommunityMembers(page, communityUrl, options = {}) {
     ? communityUrl
     : `${communityUrl}/members`;
   
-  await page.goto(membersUrl, { waitUntil: 'networkidle2' });
+  await gotoX(page, membersUrl);
   await randomDelay(2000, 3000);
   
   const members = [];
@@ -879,9 +887,7 @@ export async function scrapeCommunityMembers(page, communityUrl, options = {}) {
 export async function scrapeSpaces(page, query, options = {}) {
   const { limit = 20, scrollDelay = 2000 } = options;
   
-  await page.goto(`https://x.com/search?q=${encodeURIComponent(query)}&f=top`, {
-    waitUntil: 'networkidle2',
-  });
+  await gotoX(page, `https://x.com/search?q=${encodeURIComponent(query)}&f=top`);
   await randomDelay(2000, 3000);
   
   const spaces = [];

@@ -20,6 +20,7 @@
  * - PORT: Port for HTTP transport (default: 3001)
  * - XACTIONS_MCP_BEARER_TOKEN: Optional bearer token for HTTP /mcp access
  * - XACTIONS_SERIALIZE_LOCAL_TOOLS: Serialize local tool calls, default true
+ * - XACTIONS_LOCAL_TOOL_TIMEOUT_MS: Timeout for one local Puppeteer tool call, default 28000
  * - XACTIONS_BROWSER_IDLE_MS: Close idle local browser after this many ms, default 900000
  * - X402_PRIVATE_KEY: (Optional) Wallet key for remote mode micropayments
  * - X402_NETWORK: (Optional) 'base-sepolia' or 'base'
@@ -57,6 +58,8 @@ const X402_PRIVATE_KEY = process.env.X402_PRIVATE_KEY;
 const X402_NETWORK = process.env.X402_NETWORK || 'base-sepolia';
 const SESSION_COOKIE = process.env.XACTIONS_SESSION_COOKIE;
 const SERIALIZE_LOCAL_TOOLS = process.env.XACTIONS_SERIALIZE_LOCAL_TOOLS !== 'false';
+const DEFAULT_LOCAL_TOOL_TIMEOUT_MS = 28_000;
+const DEFAULT_NAVIGATION_TIMEOUT_MS = 15_000;
 
 // Dynamic backend (initialized at startup)
 let localTools = null;
@@ -79,18 +82,79 @@ function enqueueLocalTool(task) {
   return run;
 }
 
+function getLocalToolTimeoutMs() {
+  const raw = process.env.XACTIONS_LOCAL_TOOL_TIMEOUT_MS;
+  if (!raw) return DEFAULT_LOCAL_TOOL_TIMEOUT_MS;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_LOCAL_TOOL_TIMEOUT_MS;
+}
+
+function localToolTimeoutError(name, timeoutMs) {
+  const error = new Error(`XActions local tool ${name} timed out after ${timeoutMs}ms`);
+  error.code = 'LOCAL_TOOL_TIMEOUT';
+  return error;
+}
+
+async function withLocalToolTimeout(name, task) {
+  const timeoutMs = getLocalToolTimeoutMs();
+  if (timeoutMs === 0) {
+    return task();
+  }
+
+  let timer;
+  const work = Promise.resolve().then(task);
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(localToolTimeoutError(name, timeoutMs)), timeoutMs);
+    if (timer.unref) timer.unref();
+  });
+
+  try {
+    return await Promise.race([work, timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+function shouldResetLocalBrowser(error) {
+  const message = `${error?.message || ''}`;
+  return error?.code === 'LOCAL_TOOL_TIMEOUT' ||
+    /Navigation timeout|Target closed|Session closed|Protocol error|Execution context was destroyed|Frame detached/i.test(message);
+}
+
+async function gotoX(page, url) {
+  return page.goto(url, {
+    waitUntil: 'domcontentloaded',
+    timeout: DEFAULT_NAVIGATION_TIMEOUT_MS,
+  });
+}
+
+async function executeLocalToolWithSafety(name, args) {
+  try {
+    return await withLocalToolTimeout(name, () => executeTool(name, args));
+  } catch (error) {
+    if (shouldResetLocalBrowser(error)) {
+      try {
+        await localTools?.closeBrowser?.();
+      } catch (closeError) {
+        console.error('Failed to reset XActions browser after tool error:', closeError.message);
+      }
+    }
+    throw error;
+  } finally {
+    localTools?.scheduleBrowserIdleClose?.();
+  }
+}
+
 async function executeQueuedTool(name, args) {
-  if (MODE !== 'local' || !SERIALIZE_LOCAL_TOOLS) {
+  if (MODE !== 'local') {
     return executeTool(name, args);
   }
 
-  return enqueueLocalTool(async () => {
-    try {
-      return await executeTool(name, args);
-    } finally {
-      localTools?.scheduleBrowserIdleClose?.();
-    }
-  });
+  if (!SERIALIZE_LOCAL_TOOLS) {
+    return executeLocalToolWithSafety(name, args);
+  }
+
+  return enqueueLocalTool(() => executeLocalToolWithSafety(name, args));
 }
 
 // ============================================================================
@@ -2464,7 +2528,7 @@ async function executeXeepyTool(name, args) {
       const page = await localTools.getPage();
       const url = args.tweetUrl;
       const tweetId = tweetIdFromUrl(url);
-      await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
+      await gotoX(page, url);
       await new Promise(r => setTimeout(r, 3000));
       const replies = await page.evaluate(({ limit, tweetId }) => {
         const articles = Array.from(document.querySelectorAll('article[data-testid="tweet"]'));
@@ -2504,7 +2568,7 @@ async function executeXeepyTool(name, args) {
       const page = await localTools.getPage();
       const tweetId = tweetIdFromUrl(args.tweetUrl);
       if (!tweetId) return { error: 'Invalid tweetUrl: expected a /status/<id> URL' };
-      await page.goto(`https://x.com/i/status/${tweetId}/likes`, { waitUntil: 'networkidle2', timeout: 30000 });
+      await gotoX(page, `https://x.com/i/status/${tweetId}/likes`);
       await new Promise(r => setTimeout(r, 3000));
       const likers = await page.evaluate((limit) => {
         const cells = document.querySelectorAll('[data-testid="UserCell"]');
@@ -2521,7 +2585,7 @@ async function executeXeepyTool(name, args) {
       const page = await localTools.getPage();
       const tweetId = tweetIdFromUrl(args.tweetUrl);
       if (!tweetId) return { error: 'Invalid tweetUrl: expected a /status/<id> URL' };
-      await page.goto(`https://x.com/i/status/${tweetId}/retweets`, { waitUntil: 'networkidle2', timeout: 30000 });
+      await gotoX(page, `https://x.com/i/status/${tweetId}/retweets`);
       await new Promise(r => setTimeout(r, 3000));
       const retweeters = await page.evaluate((limit) => {
         const cells = document.querySelectorAll('[data-testid="UserCell"]');
@@ -2536,7 +2600,7 @@ async function executeXeepyTool(name, args) {
 
     case 'x_get_media': {
       const page = await localTools.getPage();
-      await page.goto(`https://x.com/${args.username}/media`, { waitUntil: 'networkidle2', timeout: 30000 });
+      await gotoX(page, `https://x.com/${args.username}/media`);
       await new Promise(r => setTimeout(r, 3000));
       const media = await page.evaluate((opts) => {
         const items = [];
@@ -2555,10 +2619,10 @@ async function executeXeepyTool(name, args) {
     case 'x_get_recommendations': {
       const page = await localTools.getPage();
       const target = args.username ? `https://x.com/${args.username}` : 'https://x.com/i/connect_people';
-      await page.goto(target, { waitUntil: 'networkidle2', timeout: 30000 });
+      await gotoX(page, target);
       if (args.username) {
         // Navigate to "Similar to" or connect page
-        await page.goto(`https://x.com/i/connect_people?user_id=${args.username}`, { waitUntil: 'networkidle2', timeout: 30000 });
+        await gotoX(page, `https://x.com/i/connect_people?user_id=${args.username}`);
       }
       await new Promise(r => setTimeout(r, 3000));
       const recommendations = await page.evaluate((limit) => {
@@ -2584,7 +2648,7 @@ async function executeXeepyTool(name, args) {
       const tweetId = tweetIdFromUrl(args.tweetUrl);
       const user = usernameFromTweetUrl(args.tweetUrl);
       if (!tweetId || !user) return { error: 'Invalid tweetUrl: expected a user /status/<id> URL' };
-      await page.goto(`https://x.com/${user}/status/${tweetId}/quotes`, { waitUntil: 'networkidle2', timeout: 30000 });
+      await gotoX(page, `https://x.com/${user}/status/${tweetId}/quotes`);
       await new Promise(r => setTimeout(r, 3000));
       const quotes = await page.evaluate((limit) => {
         const articles = document.querySelectorAll('article[data-testid="tweet"]');
@@ -2601,7 +2665,7 @@ async function executeXeepyTool(name, args) {
 
     case 'x_get_likes': {
       const page = await localTools.getPage();
-      await page.goto(`https://x.com/${args.username}/likes`, { waitUntil: 'networkidle2', timeout: 30000 });
+      await gotoX(page, `https://x.com/${args.username}/likes`);
       await new Promise(r => setTimeout(r, 3000));
       const likedTweets = await page.evaluate((limit) => {
         const articles = document.querySelectorAll('article[data-testid="tweet"]');
@@ -2692,8 +2756,10 @@ async function executeXeepyTool(name, args) {
     // ── Engagement Automation ──
     case 'x_quote_tweet': {
       const page = await localTools.getPage();
-      const tweetId = tweetIdFromUrl(args.tweetUrl);
-      await page.goto(args.tweetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+      const tweetUrl = args.tweetUrl || args.url;
+      const tweetId = tweetIdFromUrl(tweetUrl);
+      if (!tweetUrl || !tweetId) return { success: false, message: 'Invalid tweet URL: expected /status/<id>' };
+      await gotoX(page, tweetUrl);
       await new Promise(r => setTimeout(r, 2000));
       const targetArticle = await findTweetArticleById(page, tweetId);
       const scope = targetArticle || (tweetId ? null : page);
@@ -2712,7 +2778,7 @@ async function executeXeepyTool(name, args) {
         await new Promise(r => setTimeout(r, 500));
         await page.click('[data-testid="tweetButton"]').catch(() => {});
       }
-      return { success: true, quotedUrl: args.tweetUrl, text: args.text };
+      return { success: true, quotedUrl: tweetUrl, text: args.text };
     }
 
     case 'x_auto_comment': {
@@ -2878,7 +2944,7 @@ async function executeXeepyTool(name, args) {
         // Scrape tweet to extract image
         const page = await localTools.getPage();
         const tweetId = tweetIdFromUrl(args.tweetUrl);
-        await page.goto(args.tweetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+        await gotoX(page, args.tweetUrl);
         await new Promise(r => setTimeout(r, 2000));
         const targetArticle = await findTweetArticleById(page, tweetId);
         const scope = targetArticle || (tweetId ? null : page);
@@ -3041,7 +3107,7 @@ async function executeXeepyTool(name, args) {
       if (args.tweetUrl) {
         const page = await localTools.getPage();
         const tweetId = tweetIdFromUrl(args.tweetUrl);
-        await page.goto(args.tweetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+        await gotoX(page, args.tweetUrl);
         await new Promise(r => setTimeout(r, 2000));
         const targetArticle = await findTweetArticleById(page, tweetId);
         const scope = targetArticle || (tweetId ? null : page);
@@ -4150,6 +4216,7 @@ async function startHttpTransport() {
       tools: TOOLS.length,
       sessions: sessions.size,
       serializeLocalTools: MODE === 'local' ? SERIALIZE_LOCAL_TOOLS : false,
+      localToolTimeoutMs: MODE === 'local' ? getLocalToolTimeoutMs() : null,
       protected: Boolean(bearerToken),
     });
   });
