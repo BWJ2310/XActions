@@ -22,8 +22,9 @@ const defaults = {
   PORT: '3344',
   XACTIONS_MODE: 'local',
   XACTIONS_SERIALIZE_LOCAL_TOOLS: 'true',
-  XACTIONS_LOCAL_TOOL_TIMEOUT_MS: '28000',
-  XACTIONS_BROWSER_IDLE_MS: '900000',
+  XACTIONS_LOCAL_TOOL_TIMEOUT_MS: '60000',
+  XACTIONS_PREWARM_BROWSER: 'true',
+  XACTIONS_BROWSER_IDLE_MS: '0',
 };
 
 for (const [key, value] of Object.entries(defaults)) {

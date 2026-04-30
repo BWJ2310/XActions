@@ -20,7 +20,8 @@
  * - PORT: Port for HTTP transport (default: 3001)
  * - XACTIONS_MCP_BEARER_TOKEN: Optional bearer token for HTTP /mcp access
  * - XACTIONS_SERIALIZE_LOCAL_TOOLS: Serialize local tool calls, default true
- * - XACTIONS_LOCAL_TOOL_TIMEOUT_MS: Timeout for one local Puppeteer tool call, default 28000
+ * - XACTIONS_LOCAL_TOOL_TIMEOUT_MS: Timeout for one local Puppeteer tool call, default 60000
+ * - XACTIONS_PREWARM_BROWSER: Launch local browser on service start. Defaults true for HTTP, false for stdio
  * - XACTIONS_BROWSER_IDLE_MS: Close idle local browser after this many ms, default 900000
  * - X402_PRIVATE_KEY: (Optional) Wallet key for remote mode micropayments
  * - X402_NETWORK: (Optional) 'base-sepolia' or 'base'
@@ -58,8 +59,20 @@ const X402_PRIVATE_KEY = process.env.X402_PRIVATE_KEY;
 const X402_NETWORK = process.env.X402_NETWORK || 'base-sepolia';
 const SESSION_COOKIE = process.env.XACTIONS_SESSION_COOKIE;
 const SERIALIZE_LOCAL_TOOLS = process.env.XACTIONS_SERIALIZE_LOCAL_TOOLS !== 'false';
-const DEFAULT_LOCAL_TOOL_TIMEOUT_MS = 28_000;
+const DEFAULT_LOCAL_TOOL_TIMEOUT_MS = 60_000;
 const DEFAULT_NAVIGATION_TIMEOUT_MS = 15_000;
+const MIN_BROWSER_ACTION_TIMEOUT_MS = 60_000;
+
+const BROWSER_ACTION_TOOLS = new Set([
+  'x_like',
+  'x_retweet',
+  'x_quote_tweet',
+  'x_reply',
+  'x_bookmark',
+  'x_delete_tweet',
+  'x_post_tweet',
+  'x_post_thread',
+]);
 
 // Dynamic backend (initialized at startup)
 let localTools = null;
@@ -82,21 +95,28 @@ function enqueueLocalTool(task) {
   return run;
 }
 
-function getLocalToolTimeoutMs() {
+function getLocalToolTimeoutMs(name = '') {
   const raw = process.env.XACTIONS_LOCAL_TOOL_TIMEOUT_MS;
   if (!raw) return DEFAULT_LOCAL_TOOL_TIMEOUT_MS;
   const parsed = Number.parseInt(raw, 10);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_LOCAL_TOOL_TIMEOUT_MS;
+  const timeoutMs = Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_LOCAL_TOOL_TIMEOUT_MS;
+  if (timeoutMs === 0) return 0;
+  return BROWSER_ACTION_TOOLS.has(name)
+    ? Math.max(timeoutMs, MIN_BROWSER_ACTION_TIMEOUT_MS)
+    : timeoutMs;
 }
 
 function localToolTimeoutError(name, timeoutMs) {
-  const error = new Error(`XActions local tool ${name} timed out after ${timeoutMs}ms`);
+  const error = new Error(
+    `XActions local tool ${name} timed out after ${timeoutMs}ms. ` +
+    'Cold browser startup plus X navigation can exceed low timeouts; set XACTIONS_LOCAL_TOOL_TIMEOUT_MS=0 to disable or use a larger value.',
+  );
   error.code = 'LOCAL_TOOL_TIMEOUT';
   return error;
 }
 
 async function withLocalToolTimeout(name, task) {
-  const timeoutMs = getLocalToolTimeoutMs();
+  const timeoutMs = getLocalToolTimeoutMs(name);
   if (timeoutMs === 0) {
     return task();
   }
@@ -155,6 +175,23 @@ async function executeQueuedTool(name, args) {
   }
 
   return enqueueLocalTool(() => executeLocalToolWithSafety(name, args));
+}
+
+function shouldPrewarmLocalBrowser(transportMode) {
+  if (MODE !== 'local' || !localTools?.getPage) return false;
+  const raw = process.env.XACTIONS_PREWARM_BROWSER;
+  if (raw !== undefined) return raw !== 'false' && raw !== '0';
+  return transportMode === 'http';
+}
+
+async function prewarmLocalBrowser(transportMode) {
+  if (!shouldPrewarmLocalBrowser(transportMode)) return;
+
+  console.error('   Prewarming shared local browser...');
+  const start = Date.now();
+  await localTools.getPage();
+  console.error(`   Shared local browser ready in ${Date.now() - start}ms`);
+  localTools.scheduleBrowserIdleClose?.();
 }
 
 // ============================================================================
@@ -4301,6 +4338,7 @@ async function main() {
   const pluginToolCount = getPluginTools().length;
 
   const transportMode = process.env.MCP_TRANSPORT || 'stdio';
+  await prewarmLocalBrowser(transportMode);
   printBanner(pluginCount, pluginToolCount);
 
   if (transportMode === 'http') {

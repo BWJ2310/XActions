@@ -13,7 +13,6 @@
 import {
   createBrowser,
   createPage,
-  loginWithCookie,
   scrapeProfile,
   scrapeFollowers,
   scrapeFollowing,
@@ -93,6 +92,54 @@ function buildTweetUrl(tweet, fallbackUsername = '') {
   return `https://x.com/${username}/status/${tweet.id}`;
 }
 
+function parseSessionCookieInput(value = '') {
+  const raw = String(value || '').trim();
+  if (!raw) return {};
+
+  if (!raw.includes('=')) {
+    return { auth_token: raw };
+  }
+
+  const cookies = {};
+  for (const part of raw.split(';')) {
+    const trimmed = part.trim();
+    const equalsIndex = trimmed.indexOf('=');
+    if (equalsIndex <= 0) continue;
+    const name = trimmed.slice(0, equalsIndex).trim();
+    const cookieValue = trimmed.slice(equalsIndex + 1).trim();
+    if (name && cookieValue) cookies[name] = cookieValue;
+  }
+
+  return cookies.auth_token ? cookies : { auth_token: raw };
+}
+
+async function setSessionCookies(pg, cookieInput) {
+  const cookies = parseSessionCookieInput(cookieInput);
+  const entries = Object.entries(cookies);
+  if (!entries.length) return false;
+
+  const cookieObjects = entries.map(([name, value]) => ({
+    name,
+    value,
+    domain: '.x.com',
+    path: '/',
+    httpOnly: ['auth_token', 'kdt'].includes(name),
+    secure: true,
+  }));
+
+  if (pg._adapter) {
+    const { getAdapter } = await import('../adapters/index.js');
+    const adapter = await getAdapter(pg._adapter);
+    for (const cookie of cookieObjects) {
+      await adapter.setCookie(pg, cookie);
+    }
+    return true;
+  }
+
+  await pg.setCookie(...cookieObjects);
+  return true;
+}
+
 /**
  * Ensure a browser/page pair is available, creating if needed.
  * Uses createBrowser/createPage from the canonical scrapers module.
@@ -117,7 +164,7 @@ async function ensureBrowser({ authenticate = true } = {}) {
   }
 
   if (authenticate && envCookie && authenticatedCookie !== envCookie) {
-    await loginWithCookie(page, envCookie);
+    await setSessionCookies(page, envCookie);
     authenticatedCookie = envCookie;
   }
 
@@ -432,7 +479,8 @@ async function scrollCollect(pg, extractFn, { limit = 100, maxRetries = 10 } = {
 
 export async function x_login({ cookie }) {
   const { page: pg } = await ensureBrowser({ authenticate: false });
-  await loginWithCookie(pg, cookie);
+  await setSessionCookies(pg, cookie);
+  await gotoX(pg, 'https://x.com/home');
   authenticatedCookie = cookie;
   return { success: true, message: 'Logged in with session cookie' };
 }
