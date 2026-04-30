@@ -434,7 +434,9 @@ export async function searchTweets(sessionCookie, query, options = {}) {
           const likesEl = article.querySelector('[data-testid="like"] span span');
           const retweetsEl = article.querySelector('[data-testid="retweet"] span span');
           const repliesEl = article.querySelector('[data-testid="reply"] span span');
-          
+          const isReply = Array.from(article.querySelectorAll('div[id^="id__"], div[dir="ltr"]'))
+            .some((el) => /Replying to/i.test(el.textContent || ''));
+
           return {
             id: linkEl?.href?.match(/status\/(\d+)/)?.[1] || null,
             text: textEl?.textContent || null,
@@ -447,6 +449,7 @@ export async function searchTweets(sessionCookie, query, options = {}) {
             retweets: retweetsEl?.textContent || '0',
             replies: repliesEl?.textContent || '0',
             url: linkEl?.href || null,
+            isReply,
           };
         }).filter(t => t.id);
       });

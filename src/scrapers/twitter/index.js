@@ -428,7 +428,9 @@ export async function searchTweets(page, query, options = {}) {
         const timeEl = article.querySelector('time');
         const linkEl = article.querySelector('a[href*="/status/"]');
         const likesEl = article.querySelector('[data-testid="like"] span span');
-        
+        const isReply = Array.from(article.querySelectorAll('div[id^="id__"], div[dir="ltr"]'))
+          .some((el) => /Replying to/i.test(el.textContent || ''));
+
         return {
           id: linkEl?.href?.match(/status\/(\d+)/)?.[1] || null,
           text: textEl?.textContent || null,
@@ -436,6 +438,7 @@ export async function searchTweets(page, query, options = {}) {
           timestamp: timeEl?.getAttribute('datetime') || null,
           likes: likesEl?.textContent || '0',
           url: linkEl?.href || null,
+          isReply,
           platform: 'twitter',
         };
       }).filter(t => t.id);
