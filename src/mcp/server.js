@@ -2381,7 +2381,7 @@ async function executeTool(name, args) {
     'x_get_replies', 'x_get_hashtag', 'x_get_likers', 'x_get_retweeters',
     'x_get_media', 'x_get_recommendations', 'x_get_mentions', 'x_get_quote_tweets',
     'x_get_likes', 'x_auto_follow', 'x_follow_engagers', 'x_unfollow_all',
-    'x_smart_unfollow', 'x_quote_tweet', 'x_auto_comment', 'x_auto_retweet',
+    'x_smart_unfollow', 'x_auto_comment', 'x_auto_retweet',
     'x_detect_bots', 'x_find_influencers', 'x_smart_target', 'x_crypto_analyze',
     'x_grok_analyze_image', 'x_audience_insights', 'x_engagement_report',
     'x_monitor_account', 'x_monitor_keyword', 'x_follower_alerts', 'x_track_engagement',
@@ -2754,33 +2754,6 @@ async function executeXeepyTool(name, args) {
     }
 
     // ── Engagement Automation ──
-    case 'x_quote_tweet': {
-      const page = await localTools.getPage();
-      const tweetUrl = args.tweetUrl || args.url;
-      const tweetId = tweetIdFromUrl(tweetUrl);
-      if (!tweetUrl || !tweetId) return { success: false, message: 'Invalid tweet URL: expected /status/<id>' };
-      await gotoX(page, tweetUrl);
-      await new Promise(r => setTimeout(r, 2000));
-      const targetArticle = await findTweetArticleById(page, tweetId);
-      const scope = targetArticle || (tweetId ? null : page);
-      if (!scope) return { success: false, message: 'Could not find target tweet' };
-      const retweetButton = await scope.$('[data-testid="retweet"]');
-      if (!retweetButton) return { success: false, message: 'Could not find retweet button' };
-      await retweetButton.click();
-      await new Promise(r => setTimeout(r, 1000));
-      const quoteClicked = await clickMenuItemByText(page, /quote/i);
-      if (!quoteClicked) return { success: false, message: 'Could not open quote composer' };
-      await new Promise(r => setTimeout(r, 1500));
-      // Type the quote text
-      const composer = await page.$('[data-testid="tweetTextarea_0"]');
-      if (composer) {
-        await composer.type(args.text, { delay: 30 });
-        await new Promise(r => setTimeout(r, 500));
-        await page.click('[data-testid="tweetButton"]').catch(() => {});
-      }
-      return { success: true, quotedUrl: tweetUrl, text: args.text };
-    }
-
     case 'x_auto_comment': {
       const searchResults = await localTools.x_search_tweets?.({ query: args.query, limit: args.limit || 5 });
       const commented = [];

@@ -47,6 +47,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const randomDelay = (min = 1000, max = 3000) =>
   sleep(min + Math.random() * (max - min));
 const DEFAULT_NAVIGATION_TIMEOUT_MS = 15_000;
+const DEFAULT_TWEET_TARGET_TIMEOUT_MS = 12_000;
+const TWEET_ARTICLE_SELECTOR = 'article[data-testid="tweet"]';
 
 async function gotoX(page, url) {
   return page.goto(url, {
@@ -108,6 +110,10 @@ async function ensureBrowser({ authenticate = true } = {}) {
     browser = await createBrowser();
     page = await createPage(browser);
     authenticatedCookie = null;
+  }
+
+  if (!page || page.isClosed?.()) {
+    page = await createPage(browser);
   }
 
   if (authenticate && envCookie && authenticatedCookie !== envCookie) {
@@ -189,40 +195,54 @@ async function clickMenuItemByText(pg, pattern) {
   return false;
 }
 
-async function findReplyComposerScope(pg, { timeout = 8000 } = {}) {
+async function findComposerScope(pg, { timeout = 8000, replyOnly = false } = {}) {
   try {
-    await pg.waitForFunction(() => {
+    await pg.waitForFunction((requireReplyContext) => {
       return Array.from(document.querySelectorAll('[role="dialog"], [data-testid="primaryColumn"]')).some((scope) => {
         const textbox = scope.querySelector('[data-testid="tweetTextarea_0"], [data-testid^="tweetTextarea_"]');
         const buttons = Array.from(scope.querySelectorAll('[data-testid="tweetButtonInline"], [data-testid="tweetButton"]'));
         const scopeText = (scope.textContent || '').toLowerCase();
-        const hasReplyButton = buttons.some((button) => {
+        const hasSubmitButton = buttons.some((button) => {
           const buttonText = `${button.textContent || ''} ${button.getAttribute('aria-label') || ''}`.toLowerCase();
-          return buttonText.includes('reply');
+          return buttonText.includes('reply') || buttonText.includes('post');
         });
-        return textbox && buttons.length > 0 && (scopeText.includes('replying to') || hasReplyButton);
+        return textbox && buttons.length > 0 && hasSubmitButton && (
+          !requireReplyContext || scopeText.includes('replying to') || buttons.some((button) => {
+            const buttonText = `${button.textContent || ''} ${button.getAttribute('aria-label') || ''}`.toLowerCase();
+            return buttonText.includes('reply');
+          })
+        );
       });
-    }, { timeout });
+    }, { timeout }, replyOnly);
   } catch {
     return null;
   }
 
   const scopes = await pg.$$('[role="dialog"], [data-testid="primaryColumn"]');
   for (const scope of scopes) {
-    const isReplyComposer = await scope.evaluate((el) => {
+    const isComposer = await scope.evaluate((el, requireReplyContext) => {
       const textbox = el.querySelector('[data-testid="tweetTextarea_0"], [data-testid^="tweetTextarea_"]');
       const buttons = Array.from(el.querySelectorAll('[data-testid="tweetButtonInline"], [data-testid="tweetButton"]'));
       const scopeText = (el.textContent || '').toLowerCase();
-      const hasReplyButton = buttons.some((button) => {
+      const hasSubmitButton = buttons.some((button) => {
         const buttonText = `${button.textContent || ''} ${button.getAttribute('aria-label') || ''}`.toLowerCase();
-        return buttonText.includes('reply');
+        return buttonText.includes('reply') || buttonText.includes('post');
       });
-      return Boolean(textbox && buttons.length > 0 && (scopeText.includes('replying to') || hasReplyButton));
-    });
-    if (isReplyComposer) return scope;
+      return Boolean(textbox && buttons.length > 0 && hasSubmitButton && (
+        !requireReplyContext || scopeText.includes('replying to') || buttons.some((button) => {
+          const buttonText = `${button.textContent || ''} ${button.getAttribute('aria-label') || ''}`.toLowerCase();
+          return buttonText.includes('reply');
+        })
+      ));
+    }, replyOnly);
+    if (isComposer) return scope;
   }
 
   return null;
+}
+
+async function findReplyComposerScope(pg, { timeout = 8000 } = {}) {
+  return findComposerScope(pg, { timeout, replyOnly: true });
 }
 
 async function clickTweetButtonInScope(scope) {
@@ -244,19 +264,47 @@ async function clickTweetButtonInScope(scope) {
   return true;
 }
 
-function tweetIdFromUrl(url) {
-  return url?.match(/\/status\/(\d+)/)?.[1] || null;
+function normalizeTweetUrl(url) {
+  const value = String(url || '').trim();
+  if (!value) return '';
+  if (/^\d{5,}$/.test(value)) return `https://x.com/i/status/${value}`;
+  if (value.startsWith('/')) return `https://x.com${value}`;
+  return value.replace(/^https?:\/\/(?:www\.)?twitter\.com/i, 'https://x.com');
 }
 
-async function findTweetArticleByUrl(pg, url) {
-  const tweetId = tweetIdFromUrl(url);
+function tweetIdFromUrl(url) {
+  const value = String(url || '').trim();
+  if (/^\d{5,}$/.test(value)) return value;
+  return value.match(/\/(?:i\/web\/|i\/)?status\/(\d+)/)?.[1] ||
+    value.match(/[?&](?:tweet_id|in_reply_to)=(\d+)/)?.[1] ||
+    null;
+}
+
+function normalizeTweetTarget({ url, tweetUrl, tweetId } = {}) {
+  const raw = url || tweetUrl || tweetId || '';
+  const id = tweetIdFromUrl(raw);
+  return {
+    tweetId: id,
+    url: normalizeTweetUrl(raw || (id ? `https://x.com/i/status/${id}` : '')),
+  };
+}
+
+async function findTweetArticleById(pg, tweetId) {
   if (!tweetId) return null;
 
-  const articles = await pg.$$('article[data-testid="tweet"]');
+  const articles = await pg.$$(TWEET_ARTICLE_SELECTOR);
   for (const article of articles) {
     const matches = await article.evaluate((el, id) => {
       return Array.from(el.querySelectorAll('a[href*="/status/"]'))
-        .some((a) => a.getAttribute('href')?.includes(`/status/${id}`));
+        .some((a) => {
+          const href = a.getAttribute('href') || '';
+          try {
+            const pathname = new URL(href, window.location.origin).pathname;
+            return pathname.includes(`/status/${id}`);
+          } catch {
+            return href.includes(`/status/${id}`);
+          }
+        });
     }, tweetId);
     if (matches) return article;
   }
@@ -264,14 +312,88 @@ async function findTweetArticleByUrl(pg, url) {
   return null;
 }
 
-async function getTweetActionScope(pg, url) {
+async function findTweetArticleByUrl(pg, url) {
+  return findTweetArticleById(pg, tweetIdFromUrl(url));
+}
+
+async function waitForTweetArticleById(pg, tweetId, { timeout = DEFAULT_TWEET_TARGET_TIMEOUT_MS } = {}) {
+  if (!tweetId) return null;
+
+  try {
+    await pg.waitForFunction((id) => {
+      const articles = Array.from(document.querySelectorAll('article[data-testid="tweet"]'));
+      return articles.some((article) => {
+        return Array.from(article.querySelectorAll('a[href*="/status/"]')).some((a) => {
+          const href = a.getAttribute('href') || '';
+          try {
+            const pathname = new URL(href, window.location.origin).pathname;
+            return pathname.includes(`/status/${id}`);
+          } catch {
+            return href.includes(`/status/${id}`);
+          }
+        });
+      });
+    }, { timeout }, tweetId);
+  } catch {
+    await pg.waitForSelector(TWEET_ARTICLE_SELECTOR, { timeout: 1000 }).catch(() => {});
+  }
+
+  return findTweetArticleById(pg, tweetId);
+}
+
+async function stopPageLoading(pg) {
+  try {
+    await pg.evaluate(() => window.stop());
+  } catch {}
+}
+
+async function recoverAfterTweetTargetMiss(pg) {
+  await stopPageLoading(pg);
+  try {
+    await pg.goto('about:blank', {
+      waitUntil: 'domcontentloaded',
+      timeout: 5000,
+    });
+  } catch {
+    await closeBrowser();
+  }
+}
+
+async function getTweetActionScope(pg, url, { timeout = DEFAULT_TWEET_TARGET_TIMEOUT_MS } = {}) {
   const tweetId = tweetIdFromUrl(url);
-  const targetArticle = await findTweetArticleByUrl(pg, url);
+  const targetArticle = await waitForTweetArticleById(pg, tweetId, { timeout });
   return {
     tweetId,
     targetArticle,
     scope: targetArticle || (tweetId ? null : pg),
   };
+}
+
+async function openReplyComposer(pg, { url, tweetId, text }) {
+  await gotoX(pg, `https://x.com/intent/tweet?in_reply_to=${encodeURIComponent(tweetId)}`);
+  await randomDelay();
+
+  let replyScope = await findReplyComposerScope(pg, { timeout: 10_000 });
+  if (!replyScope) {
+    await gotoX(pg, url || `https://x.com/i/status/${tweetId}`);
+    await randomDelay();
+
+    const { scope } = await getTweetActionScope(pg, url || `https://x.com/i/status/${tweetId}`);
+    if (!scope) return null;
+
+    const replyButton = await scope.$('[data-testid="reply"]');
+    if (!replyButton) return null;
+    await replyButton.click();
+    await sleep(750);
+    replyScope = await findReplyComposerScope(pg, { timeout: 10_000 });
+  }
+
+  const replyBox = await replyScope?.$('[data-testid="tweetTextarea_0"], [data-testid^="tweetTextarea_"]');
+  if (!replyBox) return null;
+
+  await replyBox.type(text, { delay: 50 });
+  await sleep(500);
+  return replyScope;
 }
 
 /**
@@ -543,36 +665,50 @@ export async function x_post_tweet({ text }) {
 }
 
 export async function x_like({ url, tweetUrl }) {
-  url = url || tweetUrl;
+  const target = normalizeTweetTarget({ url, tweetUrl });
+  if (!target.tweetId || !target.url) {
+    return { success: false, message: 'Invalid tweet URL: expected /status/<id>' };
+  }
+
   const { page: pg } = await ensureBrowser();
-  await gotoX(pg, url);
+  await gotoX(pg, target.url);
   await randomDelay();
 
-  const { targetArticle, scope } = await getTweetActionScope(pg, url);
-  if (!scope) return { success: false, message: 'Could not find target tweet' };
+  const { targetArticle, scope } = await getTweetActionScope(pg, target.url);
+  if (!scope) {
+    await recoverAfterTweetTargetMiss(pg);
+    return { success: false, message: 'Could not find target tweet', targetTweetId: target.tweetId, targetUrl: target.url };
+  }
   if (targetArticle && await targetArticle.$('[data-testid="unlike"]')) {
-    return { success: true, message: 'Tweet already liked' };
+    return { success: true, message: 'Tweet already liked', targetTweetId: target.tweetId, targetUrl: target.url };
   }
 
   const likeButton = await scope.$('[data-testid="like"]');
   if (likeButton) {
     await likeButton.click();
     await randomDelay();
-    return { success: true, message: 'Tweet liked' };
+    return { success: true, message: 'Tweet liked', targetTweetId: target.tweetId, targetUrl: target.url };
   }
-  return { success: false, message: 'Could not like tweet' };
+  return { success: false, message: 'Could not like tweet', targetTweetId: target.tweetId, targetUrl: target.url };
 }
 
 export async function x_retweet({ url, tweetUrl }) {
-  url = url || tweetUrl;
+  const target = normalizeTweetTarget({ url, tweetUrl });
+  if (!target.tweetId || !target.url) {
+    return { success: false, message: 'Invalid tweet URL: expected /status/<id>' };
+  }
+
   const { page: pg } = await ensureBrowser();
-  await gotoX(pg, url);
+  await gotoX(pg, target.url);
   await randomDelay();
 
-  const { targetArticle, scope } = await getTweetActionScope(pg, url);
-  if (!scope) return { success: false, message: 'Could not find target tweet' };
+  const { targetArticle, scope } = await getTweetActionScope(pg, target.url);
+  if (!scope) {
+    await recoverAfterTweetTargetMiss(pg);
+    return { success: false, message: 'Could not find target tweet', targetTweetId: target.tweetId, targetUrl: target.url };
+  }
   if (targetArticle && await targetArticle.$('[data-testid="unretweet"]')) {
-    return { success: true, message: 'Tweet already retweeted' };
+    return { success: true, message: 'Tweet already retweeted', targetTweetId: target.tweetId, targetUrl: target.url };
   }
 
   const retweetButton = await scope.$('[data-testid="retweet"]');
@@ -581,9 +717,62 @@ export async function x_retweet({ url, tweetUrl }) {
     await sleep(500);
     await clickIfPresent(pg, '[data-testid="retweetConfirm"]');
     await randomDelay();
-    return { success: true, message: 'Retweeted' };
+    return { success: true, message: 'Retweeted', targetTweetId: target.tweetId, targetUrl: target.url };
   }
-  return { success: false, message: 'Could not retweet' };
+  return { success: false, message: 'Could not retweet', targetTweetId: target.tweetId, targetUrl: target.url };
+}
+
+export async function x_quote_tweet({ url, tweetUrl, text }) {
+  const target = normalizeTweetTarget({ url, tweetUrl });
+  if (!target.tweetId || !target.url) {
+    return { success: false, message: 'Invalid tweet URL: expected /status/<id>' };
+  }
+  if (typeof text !== 'string' || text.length === 0) {
+    return { success: false, message: 'Quote text is required' };
+  }
+
+  const { page: pg } = await ensureBrowser();
+  await gotoX(pg, target.url);
+  await randomDelay();
+
+  const { scope } = await getTweetActionScope(pg, target.url);
+  if (!scope) {
+    await recoverAfterTweetTargetMiss(pg);
+    return { success: false, message: 'Could not find target tweet', targetTweetId: target.tweetId, targetUrl: target.url };
+  }
+
+  const retweetButton = await scope.$('[data-testid="retweet"], [data-testid="unretweet"]');
+  if (!retweetButton) {
+    return { success: false, message: 'Could not find retweet button', targetTweetId: target.tweetId, targetUrl: target.url };
+  }
+
+  await retweetButton.click();
+  await sleep(750);
+
+  const quoteClicked = await clickMenuItemByText(pg, /quote/i);
+  if (!quoteClicked) {
+    return { success: false, message: 'Could not open quote composer', targetTweetId: target.tweetId, targetUrl: target.url };
+  }
+
+  const composerScope = await findComposerScope(pg, { timeout: 10_000 });
+  if (!composerScope) {
+    return { success: false, message: 'Could not find quote composer', targetTweetId: target.tweetId, targetUrl: target.url };
+  }
+
+  const composer = await composerScope.$('[data-testid="tweetTextarea_0"], [data-testid^="tweetTextarea_"]');
+  if (!composer) {
+    return { success: false, message: 'Could not find quote composer textbox', targetTweetId: target.tweetId, targetUrl: target.url };
+  }
+
+  await composer.type(text, { delay: 30 });
+  await sleep(500);
+
+  if (await clickTweetButtonInScope(composerScope)) {
+    await randomDelay();
+    return { success: true, message: 'Quote tweet posted', quotedUrl: target.url, targetTweetId: target.tweetId, text };
+  }
+
+  return { success: false, message: 'Could not post quote tweet', targetTweetId: target.tweetId, targetUrl: target.url };
 }
 
 // ============================================================================
@@ -788,14 +977,21 @@ export async function x_schedule_post({ text, scheduledAt }) {
 }
 
 export async function x_delete_tweet({ url, tweetUrl }) {
-  url = url || tweetUrl;
+  const target = normalizeTweetTarget({ url, tweetUrl });
+  if (!target.tweetId || !target.url) {
+    return { success: false, message: 'Invalid tweet URL: expected /status/<id>' };
+  }
+
   const { page: pg } = await ensureBrowser();
-  await gotoX(pg, url);
+  await gotoX(pg, target.url);
   await randomDelay();
 
   // Open the caret "⋯" menu on the tweet
-  const { scope } = await getTweetActionScope(pg, url);
-  if (!scope) return { success: false, message: 'Could not find target tweet' };
+  const { scope } = await getTweetActionScope(pg, target.url);
+  if (!scope) {
+    await recoverAfterTweetTargetMiss(pg);
+    return { success: false, message: 'Could not find target tweet', targetTweetId: target.tweetId, targetUrl: target.url };
+  }
 
   const caret = await scope.$('[data-testid="caret"]');
   if (caret) {
@@ -818,48 +1014,55 @@ export async function x_delete_tweet({ url, tweetUrl }) {
 // ============================================================================
 
 export async function x_reply({ url, tweetUrl, text }) {
-  url = url || tweetUrl;
-  const tweetId = tweetIdFromUrl(url);
-  if (!tweetId) return { success: false, message: 'Invalid tweet URL: expected /status/<id>' };
+  const target = normalizeTweetTarget({ url, tweetUrl });
+  if (!target.tweetId || !target.url) {
+    return { success: false, message: 'Invalid tweet URL: expected /status/<id>' };
+  }
 
   const { page: pg } = await ensureBrowser();
-  await gotoX(pg, `https://x.com/intent/tweet?in_reply_to=${encodeURIComponent(tweetId)}`);
-  await randomDelay();
-
-  const replyScope = await findReplyComposerScope(pg);
-  if (!replyScope) return { success: false, message: 'Could not open reply composer for target tweet' };
-
-  const replyBox = await replyScope.$('[data-testid="tweetTextarea_0"], [data-testid^="tweetTextarea_"]');
-  if (replyBox) {
-    await replyBox.type(text, { delay: 50 });
-    await sleep(500);
-    if (await clickTweetButtonInScope(replyScope)) {
-      await randomDelay();
-      return { success: true, message: 'Reply posted', targetUrl: url, targetTweetId: tweetId };
-    }
+  const replyScope = await openReplyComposer(pg, {
+    url: target.url,
+    tweetId: target.tweetId,
+    text,
+  });
+  if (!replyScope) {
+    await recoverAfterTweetTargetMiss(pg);
+    return { success: false, message: 'Could not open reply composer for target tweet', targetUrl: target.url, targetTweetId: target.tweetId };
   }
-  return { success: false, message: 'Could not reply to tweet' };
+
+  if (await clickTweetButtonInScope(replyScope)) {
+    await randomDelay();
+    return { success: true, message: 'Reply posted', targetUrl: target.url, targetTweetId: target.tweetId };
+  }
+  return { success: false, message: 'Could not reply to tweet', targetUrl: target.url, targetTweetId: target.tweetId };
 }
 
 export async function x_bookmark({ url, tweetUrl }) {
-  url = url || tweetUrl;
+  const target = normalizeTweetTarget({ url, tweetUrl });
+  if (!target.tweetId || !target.url) {
+    return { success: false, message: 'Invalid tweet URL: expected /status/<id>' };
+  }
+
   const { page: pg } = await ensureBrowser();
-  await gotoX(pg, url);
+  await gotoX(pg, target.url);
   await randomDelay();
 
-  const { targetArticle, scope } = await getTweetActionScope(pg, url);
-  if (!scope) return { success: false, message: 'Could not find target tweet' };
+  const { targetArticle, scope } = await getTweetActionScope(pg, target.url);
+  if (!scope) {
+    await recoverAfterTweetTargetMiss(pg);
+    return { success: false, message: 'Could not find target tweet', targetTweetId: target.tweetId, targetUrl: target.url };
+  }
   if (targetArticle && await targetArticle.$('[data-testid="removeBookmark"]')) {
-    return { success: true, message: 'Tweet already bookmarked' };
+    return { success: true, message: 'Tweet already bookmarked', targetTweetId: target.tweetId, targetUrl: target.url };
   }
 
   const bookmarkButton = await scope.$('[data-testid="bookmark"]');
   if (bookmarkButton) {
     await bookmarkButton.click();
     await randomDelay();
-    return { success: true, message: 'Tweet bookmarked' };
+    return { success: true, message: 'Tweet bookmarked', targetTweetId: target.tweetId, targetUrl: target.url };
   }
-  return { success: false, message: 'Could not bookmark tweet' };
+  return { success: false, message: 'Could not bookmark tweet', targetTweetId: target.tweetId, targetUrl: target.url };
 }
 
 export async function x_get_bookmarks({ limit = 100 }) {
@@ -1248,17 +1451,22 @@ export async function x_get_analytics({ period = '28d' }) {
 }
 
 export async function x_get_post_analytics({ url, tweetUrl }) {
-  url = url || tweetUrl;
-  const { page: pg } = await ensureBrowser();
-  await gotoX(pg, url);
-  await randomDelay();
-
-  const targetArticle = await findTweetArticleByUrl(pg, url);
-  if (tweetIdFromUrl(url) && !targetArticle) {
-    return { success: false, message: 'Could not find target tweet' };
+  const target = normalizeTweetTarget({ url, tweetUrl });
+  if (!target.tweetId || !target.url) {
+    return { success: false, message: 'Invalid tweet URL: expected /status/<id>' };
   }
 
-  const analytics = await (targetArticle || pg).evaluate((el) => {
+  const { page: pg } = await ensureBrowser();
+  await gotoX(pg, target.url);
+  await randomDelay();
+
+  const targetArticle = await waitForTweetArticleById(pg, target.tweetId);
+  if (!targetArticle) {
+    await recoverAfterTweetTargetMiss(pg);
+    return { success: false, message: 'Could not find target tweet', targetTweetId: target.tweetId, targetUrl: target.url };
+  }
+
+  const analytics = await targetArticle.evaluate((el) => {
     const article = el?.matches?.('article[data-testid="tweet"]')
       ? el
       : document.querySelector('article[data-testid="tweet"]');
@@ -1280,7 +1488,7 @@ export async function x_get_post_analytics({ url, tweetUrl }) {
   });
 
   if (!analytics) return { success: false, message: 'Could not find tweet' };
-  return { success: true, url, ...analytics };
+  return { success: true, url: target.url, targetTweetId: target.tweetId, ...analytics };
 }
 
 // ============================================================================
@@ -1651,6 +1859,7 @@ export const toolMap = {
   x_post_tweet,
   x_like,
   x_retweet,
+  x_quote_tweet,
   x_download_video,
   // Profile management
   x_update_profile,
