@@ -292,23 +292,98 @@ async function findReplyComposerScope(pg, { timeout = 8000 } = {}) {
   return findComposerScope(pg, { timeout, replyOnly: true });
 }
 
-async function clickTweetButtonInScope(scope) {
+async function findEnabledTweetButtonInScope(scope) {
   const buttons = await scope.$$('[data-testid="tweetButtonInline"], [data-testid="tweetButton"]');
-  let button = null;
   for (const candidate of buttons) {
-    const canSubmitReply = await candidate.evaluate((el) => {
+    const canSubmit = await candidate.evaluate((el) => {
       const label = `${el.textContent || ''} ${el.getAttribute('aria-label') || ''}`.toLowerCase();
-      const disabled = el.hasAttribute('disabled') || el.getAttribute('aria-disabled') === 'true';
-      return !disabled && (label.includes('reply') || label.includes('post'));
+      const disabled = Boolean(
+        el.disabled ||
+        el.hasAttribute('disabled') ||
+        el.getAttribute('aria-disabled') === 'true' ||
+        el.closest('[aria-disabled="true"]'),
+      );
+      const isTweetButton = ['tweetButton', 'tweetButtonInline'].includes(el.getAttribute('data-testid') || '');
+      return !disabled && (isTweetButton || label.includes('reply') || label.includes('post') || label.includes('tweet') || label.includes('quote'));
     });
-    if (canSubmitReply) {
-      button = candidate;
-      break;
-    }
+    if (canSubmit) return candidate;
   }
+  return null;
+}
+
+async function clickTweetButtonInScope(scope) {
+  const button = await findEnabledTweetButtonInScope(scope);
   if (!button) return false;
   await button.click();
   return true;
+}
+
+async function waitForTweetButtonEnabled(scope, { timeout = 2500 } = {}) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    if (await findEnabledTweetButtonInScope(scope)) return true;
+    await sleep(100);
+  }
+  return false;
+}
+
+async function clearComposerText(pg, composer) {
+  await composer.focus();
+  await pg.keyboard.down('Control');
+  await pg.keyboard.press('A');
+  await pg.keyboard.up('Control');
+  await pg.keyboard.press('Backspace');
+  await sleep(150);
+}
+
+async function insertTextWithExecCommand(composer, value) {
+  return composer.evaluate((el, input) => {
+    el.focus();
+    const beforeInput = new InputEvent('beforeinput', {
+      bubbles: true,
+      cancelable: true,
+      inputType: 'insertText',
+      data: input,
+    });
+    el.dispatchEvent(beforeInput);
+    const ok = document.execCommand('insertText', false, input);
+    el.dispatchEvent(new InputEvent('input', {
+      bubbles: true,
+      cancelable: true,
+      inputType: 'insertText',
+      data: input,
+    }));
+    const currentText = el.innerText || el.textContent || '';
+    return ok || currentText.includes(input);
+  }, value);
+}
+
+async function insertComposerText(pg, composer, text, { delay = 30, scope = null } = {}) {
+  const value = String(text || '');
+  if (!value) return false;
+
+  await composer.focus();
+
+  try {
+    await composer.type(value, { delay });
+    if (!scope || await waitForTweetButtonEnabled(scope)) return true;
+  } catch {}
+
+  if (scope) await clearComposerText(pg, composer);
+
+  try {
+    await pg.keyboard.sendCharacter(value);
+    if (!scope || await waitForTweetButtonEnabled(scope)) return true;
+  } catch {}
+
+  if (scope) await clearComposerText(pg, composer);
+
+  try {
+    await insertTextWithExecCommand(composer, value);
+    if (!scope || await waitForTweetButtonEnabled(scope)) return true;
+  } catch {}
+
+  return !scope;
 }
 
 function normalizeTweetUrl(url) {
@@ -812,7 +887,10 @@ export async function x_quote_tweet({ url, tweetUrl, text }) {
     return { success: false, message: 'Could not find quote composer textbox', targetTweetId: target.tweetId, targetUrl: target.url };
   }
 
-  await composer.type(text, { delay: 30 });
+  const textInserted = await insertComposerText(pg, composer, text, { delay: 30, scope: composerScope });
+  if (!textInserted) {
+    return { success: false, message: 'Quote composer text did not enable post button', targetTweetId: target.tweetId, targetUrl: target.url };
+  }
   await sleep(500);
 
   if (await clickTweetButtonInScope(composerScope)) {
