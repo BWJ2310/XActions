@@ -143,6 +143,50 @@ describe('MCP HTTP transport', () => {
     assert.ok(Array.isArray(listBody.result?.tools));
     assert.ok(listBody.result.tools.length > 0, 'tools/list should return at least one tool');
   });
+
+  it('rejects GET SSE streams with a JSON-RPC 405 response', async () => {
+    const headers = {
+      accept: 'application/json, text/event-stream',
+      authorization: `Bearer ${bearerToken}`,
+      'content-type': 'application/json',
+    };
+
+    const initializeResponse = await fetch(`${baseUrl}/mcp`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 3,
+        method: 'initialize',
+        params: {
+          protocolVersion: '2025-03-26',
+          capabilities: {},
+          clientInfo: { name: 'server-test', version: '1.0.0' },
+        },
+      }),
+    });
+
+    const sessionId = initializeResponse.headers.get('mcp-session-id');
+    assert.ok(sessionId, 'initialize should return a session id');
+
+    const getResponse = await fetch(`${baseUrl}/mcp`, {
+      method: 'GET',
+      headers: {
+        accept: 'text/event-stream',
+        authorization: `Bearer ${bearerToken}`,
+        'mcp-protocol-version': '2025-03-26',
+        'mcp-session-id': sessionId,
+      },
+    });
+
+    assert.equal(getResponse.status, 405);
+    assert.match(getResponse.headers.get('content-type') || '', /application\/json/i);
+
+    const body = await getResponse.json();
+    assert.equal(body.jsonrpc, '2.0');
+    assert.equal(body.id, null);
+    assert.equal(body.error?.code, -32000);
+  });
 });
 
 describe('MCP Tool Definitions', () => {

@@ -4255,6 +4255,15 @@ async function startHttpTransport() {
 
   // MCP endpoint — handles POST (messages), GET (SSE stream), DELETE (session close)
   app.all('/mcp', async (req, res) => {
+    if (req.method === 'GET') {
+      res.status(405).json({
+        jsonrpc: '2.0',
+        error: { code: -32000, message: 'GET stream not supported on this XActions HTTP transport. Use POST JSON-RPC requests.' },
+        id: null,
+      });
+      return;
+    }
+
     const sessionId = req.headers['mcp-session-id'];
 
     // Existing session
