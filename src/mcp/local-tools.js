@@ -355,7 +355,7 @@ async function clickTweetButtonInScope(scope) {
   return true;
 }
 
-async function waitForTweetButtonEnabled(scope, { timeout = 2500 } = {}) {
+async function waitForTweetButtonEnabled(scope, { timeout = 4000 } = {}) {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
     if (await findEnabledTweetButtonInScope(scope)) return true;
@@ -366,10 +366,31 @@ async function waitForTweetButtonEnabled(scope, { timeout = 2500 } = {}) {
 
 async function clearComposerText(pg, composer) {
   await composer.focus();
-  await pg.keyboard.down('Control');
-  await pg.keyboard.press('A');
-  await pg.keyboard.up('Control');
-  await pg.keyboard.press('Backspace');
+  const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
+  try {
+    await pg.keyboard.down(modifier);
+    await pg.keyboard.press('A');
+    await pg.keyboard.up(modifier);
+    await pg.keyboard.press('Backspace');
+  } catch {}
+  await composer.evaluate((el) => {
+    el.focus();
+    const selection = window.getSelection?.();
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    document.execCommand('delete', false, null);
+    if ((el.innerText || el.textContent || '').trim().length > 0) {
+      el.textContent = '';
+    }
+    el.dispatchEvent(new InputEvent('input', {
+      bubbles: true,
+      cancelable: true,
+      inputType: 'deleteContentBackward',
+    }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  });
   await sleep(150);
 }
 
@@ -395,29 +416,86 @@ async function insertTextWithExecCommand(composer, value) {
   }, value);
 }
 
+async function insertTextCharacterByCharacter(composer, value, { delay = 30 } = {}) {
+  for (const char of String(value || '')) {
+    const inserted = await composer.evaluate((el, input) => {
+      el.focus();
+      const beforeInput = new InputEvent('beforeinput', {
+        bubbles: true,
+        cancelable: true,
+        inputType: 'insertText',
+        data: input,
+      });
+      el.dispatchEvent(beforeInput);
+      const ok = document.execCommand('insertText', false, input);
+      el.dispatchEvent(new InputEvent('input', {
+        bubbles: true,
+        cancelable: true,
+        inputType: 'insertText',
+        data: input,
+      }));
+      return ok || (el.innerText || el.textContent || '').includes(input);
+    }, char);
+    if (!inserted) return false;
+    if (delay > 0) await sleep(delay);
+  }
+  return true;
+}
+
+async function composerHasText(composer, expectedText = '') {
+  return composer.evaluate((el, expected) => {
+    const currentText = (el.innerText || el.textContent || '').replace(/\u00a0/g, ' ').trim();
+    if (!expected) return currentText.length > 0;
+    return currentText.includes(expected.trim());
+  }, expectedText);
+}
+
+async function nudgeComposerInput(composer) {
+  return composer.evaluate((el) => {
+    const currentText = (el.innerText || el.textContent || '').replace(/\u00a0/g, ' ');
+    el.focus();
+    el.dispatchEvent(new InputEvent('input', {
+      bubbles: true,
+      cancelable: true,
+      inputType: 'insertText',
+      data: currentText,
+    }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+    return currentText;
+  });
+}
+
 async function insertComposerText(pg, composer, text, { delay = 30, scope = null } = {}) {
   const value = String(text || '');
   if (!value) return false;
+  const buttonEnableTimeout = Math.max(4000, Math.min(6000, 2000 + (value.length * 15)));
+  const waitForComposerReady = async () => {
+    if (!scope) return composerHasText(composer, value);
+    if (await waitForTweetButtonEnabled(scope, { timeout: buttonEnableTimeout })) return true;
+    if (!await composerHasText(composer, value)) return false;
+    await nudgeComposerInput(composer);
+    return waitForTweetButtonEnabled(scope, { timeout: 1500 });
+  };
 
   await composer.focus();
 
   try {
     await composer.type(value, { delay });
-    if (!scope || await waitForTweetButtonEnabled(scope)) return true;
+    if (await waitForComposerReady()) return true;
   } catch {}
 
   if (scope) await clearComposerText(pg, composer);
 
   try {
-    await pg.keyboard.sendCharacter(value);
-    if (!scope || await waitForTweetButtonEnabled(scope)) return true;
+    await insertTextCharacterByCharacter(composer, value, { delay });
+    if (await waitForComposerReady()) return true;
   } catch {}
 
   if (scope) await clearComposerText(pg, composer);
 
   try {
     await insertTextWithExecCommand(composer, value);
-    if (!scope || await waitForTweetButtonEnabled(scope)) return true;
+    if (await waitForComposerReady()) return true;
   } catch {}
 
   return !scope;
