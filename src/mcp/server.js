@@ -4267,6 +4267,7 @@ async function startHttpTransport() {
     // New session (only via POST — the initialize request)
     if (req.method === 'POST' && !sessionId) {
       const transport = new StreamableHTTPServerTransport({
+        enableJsonResponse: true,
         sessionIdGenerator: () => randomUUID(),
         onsessioninitialized: (sid) => {
           sessions.set(sid, { server: srv, transport });
