@@ -200,6 +200,7 @@ Set `XACTIONS_MCP_BEARER_TOKEN` in the client environment to the same random tok
 | `XACTIONS_MCP_BEARER_TOKEN` | Recommended for HTTP | Bearer token required for `/mcp` requests |
 | `XACTIONS_SERIALIZE_LOCAL_TOOLS` | No | Serialize local tools to protect the shared browser, default `true` |
 | `XACTIONS_LOCAL_TOOL_TIMEOUT_MS` | No | Timeout for one local browser tool call, default `60000`; set `0` to disable |
+| `XACTIONS_NAVIGATION_TIMEOUT_MS` | No | Per-navigation browser timeout, default `20000`; local browser navigation retries once after a timeout |
 | `XACTIONS_PREWARM_BROWSER` | No | Launch the shared local browser when the MCP service starts; defaults to `true` for HTTP and `false` for stdio |
 | `XACTIONS_BROWSER_IDLE_MS` | No | Close the shared browser after idle time, default `900000`; set `0` to keep open |
 | `DEBUG` | No | Set to `true` for verbose error stacks |

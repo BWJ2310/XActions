@@ -60,7 +60,8 @@ const X402_NETWORK = process.env.X402_NETWORK || 'base-sepolia';
 const SESSION_COOKIE = process.env.XACTIONS_SESSION_COOKIE;
 const SERIALIZE_LOCAL_TOOLS = process.env.XACTIONS_SERIALIZE_LOCAL_TOOLS !== 'false';
 const DEFAULT_LOCAL_TOOL_TIMEOUT_MS = 60_000;
-const DEFAULT_NAVIGATION_TIMEOUT_MS = 15_000;
+const DEFAULT_NAVIGATION_TIMEOUT_MS = 20_000;
+const DEFAULT_NAVIGATION_RETRIES = 1;
 const MIN_BROWSER_ACTION_TIMEOUT_MS = 60_000;
 
 const BROWSER_ACTION_TOOLS = new Set([
@@ -141,11 +142,47 @@ function shouldResetLocalBrowser(error) {
     /Navigation timeout|Target closed|Session closed|Protocol error|Execution context was destroyed|Frame detached/i.test(message);
 }
 
-async function gotoX(page, url) {
-  return page.goto(url, {
-    waitUntil: 'domcontentloaded',
-    timeout: DEFAULT_NAVIGATION_TIMEOUT_MS,
-  });
+function getNavigationTimeoutMs() {
+  const raw = process.env.XACTIONS_NAVIGATION_TIMEOUT_MS;
+  if (!raw) return DEFAULT_NAVIGATION_TIMEOUT_MS;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_NAVIGATION_TIMEOUT_MS;
+}
+
+function isNavigationTimeoutError(error) {
+  return /Navigation timeout/i.test(`${error?.message || ''}`);
+}
+
+async function gotoX(page, url, timeout = getNavigationTimeoutMs()) {
+  let lastError = null;
+
+  for (let attempt = 0; attempt <= DEFAULT_NAVIGATION_RETRIES; attempt++) {
+    try {
+      return await page.goto(url, {
+        waitUntil: 'domcontentloaded',
+        timeout,
+      });
+    } catch (error) {
+      lastError = error;
+      if (!isNavigationTimeoutError(error) || attempt === DEFAULT_NAVIGATION_RETRIES) {
+        throw error;
+      }
+
+      console.error(`Navigation timeout loading ${url}; retrying (${attempt + 1}/${DEFAULT_NAVIGATION_RETRIES})`);
+      try {
+        if (!page.isClosed?.()) {
+          await page.goto('about:blank', {
+            waitUntil: 'domcontentloaded',
+            timeout: Math.min(timeout, 5000),
+          });
+        }
+      } catch {}
+
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  }
+
+  throw lastError;
 }
 
 async function executeLocalToolWithSafety(name, args) {
