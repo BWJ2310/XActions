@@ -41,6 +41,7 @@
     "cli": "node src/cli/index.js",
     "mcp": "node src/mcp/server.js",
     "mcp:lan": "node scripts/start-mcp-lan.js",
+    "mcp:lan:reset": "node scripts/reset-mcp-lan.js",
     "worker": "node api/services/jobQueue.js",
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
