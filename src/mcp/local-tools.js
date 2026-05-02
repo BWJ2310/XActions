@@ -141,7 +141,7 @@ function getTweetResultId(result) {
 function getCanonicalTweetUrl(url, tweetId) {
   const normalized = normalizeTweetUrl(url).replace(/[?#].*$/, '');
   const match = normalized.match(/^https:\/\/x\.com\/([^/]+)\/status\/(\d+)/i);
-  if (match && match[1].toLowerCase() !== 'i' && match[2] === tweetId) return normalized;
+  if (match && match[1].toLowerCase() === 'i' && match[2] === tweetId) return normalized;
   return `https://x.com/i/status/${tweetId}`;
 }
 

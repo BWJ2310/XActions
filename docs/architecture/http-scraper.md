@@ -81,7 +81,7 @@ These endpoints use `POST` with a JSON body and require full authentication (bea
 
 | Operation | Query ID | Body Fields |
 |-----------|----------|-------------|
-| `CreateTweet` | `bDE2rBtZb3uyrczSZ_pI9g` | `tweet_text`, `reply?`, `media?`, `quote_tweet_id?` |
+| `CreateTweet` | `Qkq4oPdZYuNB_Qw3TDuFqQ` | `tweet_text`, `reply?`, `media?`, `attachment_url?` |
 | `DeleteTweet` | `VaenaVgh5q5ih7kvyVjgtg` | `tweet_id` |
 | `FavoriteTweet` | `lI07N6Otwv1PhnEgXILM7A` | `tweet_id` |
 | `UnfavoriteTweet` | `ZYKSe-w7KEslx3JhSIk5LA` | `tweet_id` |

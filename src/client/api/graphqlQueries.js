@@ -109,7 +109,7 @@ export const GRAPHQL_ENDPOINTS = {
     method: 'GET',
   },
   CreateTweet: {
-    queryId: 'a1p9RWpkYKBjWv_I3WzS-A',
+    queryId: 'Qkq4oPdZYuNB_Qw3TDuFqQ',
     operationName: 'CreateTweet',
     method: 'POST',
   },

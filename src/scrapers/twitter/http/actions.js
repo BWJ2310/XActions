@@ -76,6 +76,28 @@ function parseTweetResult(json) {
   return result;
 }
 
+function getCreatedTweetId(result) {
+  return result?.rest_id ||
+    result?.id_str ||
+    result?.legacy?.id_str ||
+    null;
+}
+
+function getQuotedTweetId(result) {
+  return result?.legacy?.quoted_status_id_str ||
+    result?.quoted_status_result?.result?.rest_id ||
+    result?.quoted_status?.id_str ||
+    null;
+}
+
+function throwTwitterErrors(json, fallbackMessage) {
+  if (!json?.errors?.length) return;
+  throw new TwitterApiError(
+    json.errors.map((error) => error.message || error.code || fallbackMessage).join('; '),
+    { data: json },
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Actions
 // ---------------------------------------------------------------------------
@@ -129,7 +151,7 @@ export async function postTweet(client, text, options = {}) {
 
   // Quote tweet
   if (quoteTweetId) {
-    variables.attachment_url = quoteTweetUrl || `https://x.com/i/web/status/${quoteTweetId}`;
+    variables.attachment_url = quoteTweetUrl || `https://x.com/i/status/${quoteTweetId}`;
   }
 
   const json = await client.graphql(queryId, operationName, variables, {
@@ -137,7 +159,12 @@ export async function postTweet(client, text, options = {}) {
     features: DEFAULT_FEATURES,
   });
 
-  return parseTweetResult(json);
+  throwTwitterErrors(json, 'CreateTweet failed');
+  const result = parseTweetResult(json);
+  if (!getCreatedTweetId(result)) {
+    throw new TwitterApiError('CreateTweet did not return a created tweet id', { data: json });
+  }
+  return result;
 }
 
 /**
@@ -246,10 +273,14 @@ export async function replyToTweet(client, tweetId, text, options = {}) {
  * @returns {Promise<object>}
  */
 export async function quoteTweet(client, tweetId, text, options = {}) {
-  return postTweet(client, text, {
+  const result = await postTweet(client, text, {
     ...options,
     quoteTweetId: tweetId,
   });
+  if (String(getQuotedTweetId(result) || '') !== String(tweetId)) {
+    throw new TwitterApiError('CreateTweet did not return quote attachment confirmation', { data: result });
+  }
+  return result;
 }
 
 /**
