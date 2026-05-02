@@ -138,7 +138,14 @@ function getTweetResultId(result) {
     null;
 }
 
-async function quoteTweetWithBrowserSession(pg, tweetId, text) {
+function getCanonicalTweetUrl(url, tweetId) {
+  const normalized = normalizeTweetUrl(url).replace(/[?#].*$/, '');
+  const match = normalized.match(/^https:\/\/x\.com\/([^/]+)\/status\/(\d+)/i);
+  if (match && match[1].toLowerCase() !== 'i' && match[2] === tweetId) return normalized;
+  return `https://x.com/i/status/${tweetId}`;
+}
+
+async function quoteTweetWithBrowserSession(pg, targetUrl, tweetId, text) {
   const [{ TwitterHttpClient }, { quoteTweet }] = await Promise.all([
     import('../scrapers/twitter/http/client.js'),
     import('../scrapers/twitter/http/actions.js'),
@@ -148,7 +155,9 @@ async function quoteTweetWithBrowserSession(pg, tweetId, text) {
     throw new Error('Missing auth_token or ct0 cookies for quote tweet');
   }
   const client = new TwitterHttpClient({ cookies: cookieString, maxRetries: 0 });
-  const result = await quoteTweet(client, tweetId, text);
+  const result = await quoteTweet(client, tweetId, text, {
+    quoteTweetUrl: getCanonicalTweetUrl(targetUrl, tweetId),
+  });
   if (result?.errors?.length) {
     throw new Error(result.errors.map((error) => error.message || error.code || 'X mutation error').join('; '));
   }
@@ -1064,7 +1073,7 @@ export async function x_quote_tweet({ url, tweetUrl, text }) {
   await randomDelay(500, 1000);
 
   try {
-    const result = await quoteTweetWithBrowserSession(pg, target.tweetId, text);
+    const result = await quoteTweetWithBrowserSession(pg, target.url, target.tweetId, text);
     await randomDelay();
     return {
       success: true,

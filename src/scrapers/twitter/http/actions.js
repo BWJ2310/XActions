@@ -102,6 +102,7 @@ export async function postTweet(client, text, options = {}) {
     replyTo,
     mediaIds = [],
     quoteTweetId,
+    quoteTweetUrl,
     sensitive = false,
     excludeReplyUserIds = [],
   } = options;
@@ -128,7 +129,7 @@ export async function postTweet(client, text, options = {}) {
 
   // Quote tweet
   if (quoteTweetId) {
-    variables.attachment_url = `https://x.com/i/web/status/${quoteTweetId}`;
+    variables.attachment_url = quoteTweetUrl || `https://x.com/i/web/status/${quoteTweetId}`;
   }
 
   const json = await client.graphql(queryId, operationName, variables, {
@@ -241,6 +242,7 @@ export async function replyToTweet(client, tweetId, text, options = {}) {
  * @param {object} [options]
  * @param {string[]} [options.mediaIds]
  * @param {boolean} [options.premium]
+ * @param {string} [options.quoteTweetUrl] canonical URL for the tweet being quoted
  * @returns {Promise<object>}
  */
 export async function quoteTweet(client, tweetId, text, options = {}) {

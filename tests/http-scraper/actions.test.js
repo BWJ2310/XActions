@@ -116,6 +116,16 @@ describe('postTweet', () => {
     expect(variables.attachment_url).toBe('https://x.com/i/web/status/555');
   });
 
+  it('should use explicit quote URL when provided', async () => {
+    await postTweet(client, 'my take', {
+      quoteTweetId: '555',
+      quoteTweetUrl: 'https://x.com/user/status/555',
+    });
+
+    const variables = client.graphql.mock.calls[0][2];
+    expect(variables.attachment_url).toBe('https://x.com/user/status/555');
+  });
+
   it('should attach media entities when mediaIds provided', async () => {
     await postTweet(client, 'pic', { mediaIds: ['m1', 'm2'] });
 
@@ -411,6 +421,15 @@ describe('quoteTweet', () => {
     const variables = client.graphql.mock.calls[0][2];
     expect(variables.media.media_entities).toHaveLength(1);
     expect(variables.attachment_url).toBe('https://x.com/i/web/status/555');
+  });
+
+  it('should forward explicit quote URL', async () => {
+    await quoteTweet(client, '555', 'take', {
+      quoteTweetUrl: 'https://x.com/user/status/555',
+    });
+
+    const variables = client.graphql.mock.calls[0][2];
+    expect(variables.attachment_url).toBe('https://x.com/user/status/555');
   });
 });
 
