@@ -399,7 +399,10 @@ async function findReplyComposerScope(pg, { timeout = 8000 } = {}) {
 }
 
 async function findEnabledTweetButtonInScope(scope) {
-  const buttons = await scope.$$('[data-testid="tweetButtonInline"], [data-testid="tweetButton"]');
+  const buttons = [
+    ...await scope.$$('[data-testid="tweetButton"]'),
+    ...await scope.$$('[data-testid="tweetButtonInline"]'),
+  ];
   for (const candidate of buttons) {
     const canSubmit = await candidate.evaluate((el) => {
       const label = `${el.textContent || ''} ${el.getAttribute('aria-label') || ''}`.toLowerCase();
@@ -409,8 +412,15 @@ async function findEnabledTweetButtonInScope(scope) {
         el.getAttribute('aria-disabled') === 'true' ||
         el.closest('[aria-disabled="true"]'),
       );
+      const rect = el.getBoundingClientRect();
+      const visible = Boolean(
+        document.contains(el) &&
+        rect.width > 0 &&
+        rect.height > 0 &&
+        window.getComputedStyle(el).visibility !== 'hidden'
+      );
       const isTweetButton = ['tweetButton', 'tweetButtonInline'].includes(el.getAttribute('data-testid') || '');
-      return !disabled && (isTweetButton || label.includes('reply') || label.includes('post') || label.includes('tweet') || label.includes('quote'));
+      return visible && !disabled && (isTweetButton || label.includes('reply') || label.includes('post') || label.includes('tweet') || label.includes('quote'));
     });
     if (canSubmit) return candidate;
   }
@@ -420,6 +430,9 @@ async function findEnabledTweetButtonInScope(scope) {
 async function clickTweetButtonInScope(scope) {
   const button = await findEnabledTweetButtonInScope(scope);
   if (!button) return false;
+  try {
+    await button.evaluate((el) => el.scrollIntoView({ block: 'center', inline: 'center' }));
+  } catch {}
   await button.click();
   return true;
 }
