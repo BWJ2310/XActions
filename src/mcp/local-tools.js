@@ -355,6 +355,54 @@ async function clickTweetButtonInScope(scope) {
   return true;
 }
 
+function normalizeUiText(value = '') {
+  return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+async function getVisibleAlertTexts(pg) {
+  try {
+    return await pg.evaluate(() => {
+      return Array.from(document.querySelectorAll('[data-testid="toast"], [role="alert"]'))
+        .map((el) => {
+          if (!document.contains(el)) return '';
+          const style = window.getComputedStyle(el);
+          if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return '';
+          if (el.getAttribute('aria-hidden') === 'true') return '';
+          return (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
+        })
+        .filter(Boolean)
+        .slice(0, 5);
+    });
+  } catch {
+    return [];
+  }
+}
+
+function classifyComposerAlert(texts = []) {
+  for (const raw of texts) {
+    const text = normalizeUiText(raw);
+    if (!text) continue;
+    const lower = text.toLowerCase();
+
+    if (
+      lower.includes('undo') ||
+      lower.includes('your post was sent') ||
+      lower.includes('your reply was sent') ||
+      lower.includes('post sent')
+    ) {
+      return { kind: 'success', text };
+    }
+
+    if (
+      /rate limit|try again|too many|slow down|something went wrong|duplicate|already sent|already posted|wasn't sent|was not sent|failed|error|cannot|can't|couldn't|could not/.test(lower)
+    ) {
+      return { kind: 'error', text };
+    }
+  }
+
+  return { kind: 'none', text: '' };
+}
+
 async function waitForTweetButtonEnabled(scope, { timeout = 4000 } = {}) {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
@@ -463,6 +511,86 @@ async function nudgeComposerInput(composer) {
     el.dispatchEvent(new Event('change', { bubbles: true }));
     return currentText;
   });
+}
+
+async function isComposerScopeActive(scope) {
+  try {
+    return await scope.evaluate((el) => {
+      return document.contains(el) && Boolean(
+        el.querySelector('[data-testid="tweetTextarea_0"], [data-testid^="tweetTextarea_"]'),
+      );
+    });
+  } catch {
+    return false;
+  }
+}
+
+async function getTargetRetweetState(pg, url) {
+  try {
+    const { scope } = await getTweetActionScope(pg, url, { timeout: 3000 });
+    if (!scope) return '';
+    const button = await scope.$('[data-testid="retweet"], [data-testid="unretweet"]');
+    if (!button) return '';
+    return await button.evaluate((el) => el.getAttribute('data-testid') || '');
+  } catch {
+    return '';
+  }
+}
+
+async function waitForQuotePostConfirmation(pg, composerScope, {
+  targetUrl,
+  initialRetweetState = '',
+  timeout = 12_000,
+} = {}) {
+  const deadline = Date.now() + timeout;
+  let composerClosed = false;
+
+  while (Date.now() < deadline) {
+    const alertState = classifyComposerAlert(await getVisibleAlertTexts(pg));
+    if (alertState.kind === 'error') {
+      return { success: false, message: alertState.text };
+    }
+    if (alertState.kind === 'success') {
+      return { success: true, signal: 'toast' };
+    }
+
+    const composerActive = await isComposerScopeActive(composerScope);
+    if (!composerActive) {
+      composerClosed = true;
+      break;
+    }
+
+    await sleep(250);
+  }
+
+  if (!composerClosed) {
+    const alertState = classifyComposerAlert(await getVisibleAlertTexts(pg));
+    if (alertState.kind === 'error') {
+      return { success: false, message: alertState.text };
+    }
+    return { success: false, message: 'Quote composer stayed open after submit' };
+  }
+
+  if (initialRetweetState === 'retweet') {
+    const retweetDeadline = Date.now() + 4000;
+    while (Date.now() < retweetDeadline) {
+      const currentRetweetState = await getTargetRetweetState(pg, targetUrl);
+      if (currentRetweetState === 'unretweet') {
+        return { success: true, signal: 'retweet-state' };
+      }
+
+      const alertState = classifyComposerAlert(await getVisibleAlertTexts(pg));
+      if (alertState.kind === 'error') {
+        return { success: false, message: alertState.text };
+      }
+
+      await sleep(250);
+    }
+
+    return { success: false, message: 'Quote composer closed but target did not enter quoted state' };
+  }
+
+  return { success: true, signal: 'composer-close' };
 }
 
 async function insertComposerText(pg, composer, text, { delay = 30, scope = null } = {}) {
@@ -983,6 +1111,7 @@ export async function x_quote_tweet({ url, tweetUrl, text }) {
   if (!retweetButton) {
     return { success: false, message: 'Could not find retweet button', targetTweetId: target.tweetId, targetUrl: target.url };
   }
+  const initialRetweetState = await retweetButton.evaluate((el) => el.getAttribute('data-testid') || '');
 
   await retweetButton.click();
   await sleep(750);
@@ -1009,8 +1138,15 @@ export async function x_quote_tweet({ url, tweetUrl, text }) {
   await sleep(500);
 
   if (await clickTweetButtonInScope(composerScope)) {
-    await randomDelay();
-    return { success: true, message: 'Quote tweet posted', quotedUrl: target.url, targetTweetId: target.tweetId, text };
+    const confirmation = await waitForQuotePostConfirmation(pg, composerScope, {
+      targetUrl: target.url,
+      initialRetweetState,
+    });
+    if (confirmation.success) {
+      await randomDelay();
+      return { success: true, message: 'Quote tweet posted', quotedUrl: target.url, targetTweetId: target.tweetId, text };
+    }
+    return { success: false, message: confirmation.message || 'Could not confirm quote tweet was posted', targetTweetId: target.tweetId, targetUrl: target.url };
   }
 
   return { success: false, message: 'Could not post quote tweet', targetTweetId: target.tweetId, targetUrl: target.url };
