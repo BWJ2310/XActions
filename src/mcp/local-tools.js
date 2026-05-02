@@ -122,6 +122,39 @@ async function getHttpScraper() {
   return httpScraperPromise;
 }
 
+async function getXCookieString(pg) {
+  const cookies = await pg.cookies('https://x.com', 'https://twitter.com');
+  return cookies
+    .filter((cookie) => cookie.name && cookie.value)
+    .map((cookie) => `${cookie.name}=${cookie.value}`)
+    .join('; ');
+}
+
+function getTweetResultId(result) {
+  return result?.rest_id ||
+    result?.id_str ||
+    result?.legacy?.id_str ||
+    result?.tweet?.rest_id ||
+    null;
+}
+
+async function quoteTweetWithBrowserSession(pg, tweetId, text) {
+  const [{ TwitterHttpClient }, { quoteTweet }] = await Promise.all([
+    import('../scrapers/twitter/http/client.js'),
+    import('../scrapers/twitter/http/actions.js'),
+  ]);
+  const cookieString = await getXCookieString(pg);
+  if (!/(^|;\s*)auth_token=/.test(cookieString) || !/(^|;\s*)ct0=/.test(cookieString)) {
+    throw new Error('Missing auth_token or ct0 cookies for quote tweet');
+  }
+  const client = new TwitterHttpClient({ cookies: cookieString, maxRetries: 0 });
+  const result = await quoteTweet(client, tweetId, text);
+  if (result?.errors?.length) {
+    throw new Error(result.errors.map((error) => error.message || error.code || 'X mutation error').join('; '));
+  }
+  return result;
+}
+
 function buildTweetUrl(tweet, fallbackUsername = '') {
   if (tweet?.url) return tweet.url;
   const username = tweet?.author?.username || fallbackUsername;
@@ -267,31 +300,6 @@ async function clickIfPresent(pg, selector, { timeout = 3000 } = {}) {
 /**
  * Find a menu item by text pattern and click it.
  */
-async function getMenuItemsSnapshot(pg) {
-  try {
-    return await pg.evaluate(() => {
-      return Array.from(document.querySelectorAll('[role="menuitem"], [data-testid^="Dropdown-Item-"], [data-testid="quoteTweet"]'))
-        .map((el) => {
-          const style = window.getComputedStyle(el);
-          if (style.display === 'none' || style.visibility === 'hidden' || el.getAttribute('aria-hidden') === 'true') {
-            return null;
-          }
-
-          return {
-            testId: el.getAttribute('data-testid') || '',
-            text: (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim(),
-            ariaLabel: el.getAttribute('aria-label') || '',
-            ariaDisabled: el.getAttribute('aria-disabled') || '',
-          };
-        })
-        .filter(Boolean)
-        .slice(0, 10);
-    });
-  } catch {
-    return [];
-  }
-}
-
 async function clickMenuItemByText(pg, pattern, { timeout = 3000, selectors = [] } = {}) {
   const itemSelector = [...selectors, '[role="menuitem"]'].join(', ');
   const deadline = Date.now() + timeout;
@@ -437,65 +445,6 @@ async function clickTweetButtonInScope(scope) {
   return true;
 }
 
-async function findTweetActionButton(scope, selector) {
-  const buttons = await scope.$$(selector);
-  for (const button of buttons) {
-    const belongsToScope = await button.evaluate((el, root) => {
-      return el.closest('article[data-testid="tweet"]') === root;
-    }, scope).catch(() => false);
-    if (belongsToScope) return button;
-  }
-  return buttons[0] || null;
-}
-
-function normalizeUiText(value = '') {
-  return String(value || '').replace(/\s+/g, ' ').trim();
-}
-
-async function getVisibleAlertTexts(pg) {
-  try {
-    return await pg.evaluate(() => {
-      return Array.from(document.querySelectorAll('[data-testid="toast"], [role="alert"]'))
-        .map((el) => {
-          if (!document.contains(el)) return '';
-          const style = window.getComputedStyle(el);
-          if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return '';
-          if (el.getAttribute('aria-hidden') === 'true') return '';
-          return (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
-        })
-        .filter(Boolean)
-        .slice(0, 5);
-    });
-  } catch {
-    return [];
-  }
-}
-
-function classifyComposerAlert(texts = []) {
-  for (const raw of texts) {
-    const text = normalizeUiText(raw);
-    if (!text) continue;
-    const lower = text.toLowerCase();
-
-    if (
-      lower.includes('undo') ||
-      lower.includes('your post was sent') ||
-      lower.includes('your reply was sent') ||
-      lower.includes('post sent')
-    ) {
-      return { kind: 'success', text };
-    }
-
-    if (
-      /rate limit|try again|too many|slow down|something went wrong|duplicate|already sent|already posted|wasn't sent|was not sent|failed|error|cannot|can't|couldn't|could not/.test(lower)
-    ) {
-      return { kind: 'error', text };
-    }
-  }
-
-  return { kind: 'none', text: '' };
-}
-
 async function waitForTweetButtonEnabled(scope, { timeout = 4000 } = {}) {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
@@ -606,86 +555,6 @@ async function nudgeComposerInput(composer) {
   });
 }
 
-async function isComposerScopeActive(scope) {
-  try {
-    return await scope.evaluate((el) => {
-      return document.contains(el) && Boolean(
-        el.querySelector('[data-testid="tweetTextarea_0"], [data-testid^="tweetTextarea_"]'),
-      );
-    });
-  } catch {
-    return false;
-  }
-}
-
-async function getTargetRetweetState(pg, url) {
-  try {
-    const { scope } = await getTweetActionScope(pg, url, { timeout: 3000 });
-    if (!scope) return '';
-    const button = await findTweetActionButton(scope, '[data-testid="retweet"], [data-testid="unretweet"]');
-    if (!button) return '';
-    return await button.evaluate((el) => el.getAttribute('data-testid') || '');
-  } catch {
-    return '';
-  }
-}
-
-async function waitForQuotePostConfirmation(pg, composerScope, {
-  targetUrl,
-  initialRetweetState = '',
-  timeout = 12_000,
-} = {}) {
-  const deadline = Date.now() + timeout;
-  let composerClosed = false;
-
-  while (Date.now() < deadline) {
-    const alertState = classifyComposerAlert(await getVisibleAlertTexts(pg));
-    if (alertState.kind === 'error') {
-      return { success: false, message: alertState.text };
-    }
-    if (alertState.kind === 'success') {
-      return { success: true, signal: 'toast' };
-    }
-
-    const composerActive = await isComposerScopeActive(composerScope);
-    if (!composerActive) {
-      composerClosed = true;
-      break;
-    }
-
-    await sleep(250);
-  }
-
-  if (!composerClosed) {
-    const alertState = classifyComposerAlert(await getVisibleAlertTexts(pg));
-    if (alertState.kind === 'error') {
-      return { success: false, message: alertState.text };
-    }
-    return { success: false, message: 'Quote composer stayed open after submit' };
-  }
-
-  if (initialRetweetState === 'retweet') {
-    const retweetDeadline = Date.now() + 4000;
-    while (Date.now() < retweetDeadline) {
-      const currentRetweetState = await getTargetRetweetState(pg, targetUrl);
-      if (currentRetweetState === 'unretweet') {
-        return { success: true, signal: 'retweet-state' };
-      }
-
-      const alertState = classifyComposerAlert(await getVisibleAlertTexts(pg));
-      if (alertState.kind === 'error') {
-        return { success: false, message: alertState.text };
-      }
-
-      await sleep(250);
-    }
-
-    return { success: false, message: 'Quote composer closed but target did not enter quoted state' };
-  }
-
-  return { success: true, signal: 'composer-close' };
-}
-
 async function insertComposerText(pg, composer, text, { delay = 30, scope = null } = {}) {
   const value = String(text || '');
   if (!value) return false;
@@ -720,19 +589,6 @@ async function insertComposerText(pg, composer, text, { delay = 30, scope = null
   } catch {}
 
   return !scope;
-}
-
-async function openQuoteComposerFromComposePage(pg, target) {
-  await gotoX(pg, 'https://x.com/compose/tweet');
-  await randomDelay(1000, 2000);
-
-  const composerScope = await findComposerScope(pg, { timeout: 10_000 });
-  if (!composerScope) {
-    return { composerScope: null, composer: null };
-  }
-
-  const composer = await composerScope.$('[data-testid="tweetTextarea_0"], [data-testid^="tweetTextarea_"]');
-  return { composerScope, composer };
 }
 
 function normalizeTweetUrl(url) {
@@ -1205,88 +1061,27 @@ export async function x_quote_tweet({ url, tweetUrl, text }) {
 
   const { page: pg } = await ensureBrowser();
   await gotoX(pg, target.url);
-  await randomDelay();
-
-  const { scope } = await getTweetActionScope(pg, target.url);
-  if (!scope) {
-    await recoverAfterTweetTargetMiss(pg);
-    return { success: false, message: 'Could not find target tweet', targetTweetId: target.tweetId, targetUrl: target.url };
-  }
-
-  const retweetButton = await findTweetActionButton(scope, '[data-testid="retweet"], [data-testid="unretweet"]');
-  if (!retweetButton) {
-    return { success: false, message: 'Could not find retweet button', targetTweetId: target.tweetId, targetUrl: target.url };
-  }
-  let initialRetweetState = await retweetButton.evaluate((el) => el.getAttribute('data-testid') || '');
+  await randomDelay(500, 1000);
 
   try {
-    await retweetButton.evaluate((el) => el.scrollIntoView({ block: 'center', inline: 'center' }));
-  } catch {}
-  await retweetButton.click();
-  await sleep(500);
-
-  const quoteClicked = await clickMenuItemByText(pg, /quote/i, {
-    timeout: 5000,
-    selectors: ['[data-testid="Dropdown-Item-Quote"]', '[data-testid="quoteTweet"]'],
-  });
-  const quoteMenuItems = quoteClicked ? [] : await getMenuItemsSnapshot(pg);
-
-  let composerScope = null;
-  let composer = null;
-  let quoteText = text;
-
-  if (quoteClicked) {
-    composerScope = await findComposerScope(pg, { timeout: 10_000, dialogOnly: true });
-    composer = composerScope
-      ? await composerScope.$('[data-testid="tweetTextarea_0"], [data-testid^="tweetTextarea_"]')
-      : null;
-  } else {
-    try {
-      await pg.keyboard.press('Escape');
-    } catch {}
-    ({ composerScope, composer } = await openQuoteComposerFromComposePage(pg, target));
-    quoteText = `${text.trim()}\n\n${target.url}`;
-    initialRetweetState = '';
-  }
-
-  if (!composerScope) {
+    const result = await quoteTweetWithBrowserSession(pg, target.tweetId, text);
+    await randomDelay();
+    return {
+      success: true,
+      message: 'Quote tweet posted',
+      quotedUrl: target.url,
+      targetTweetId: target.tweetId,
+      quoteTweetId: getTweetResultId(result),
+      text,
+    };
+  } catch (error) {
     return {
       success: false,
-      message: quoteClicked ? 'Could not find quote composer' : 'Could not open quote composer',
+      message: `Could not post quote tweet: ${error.message}`,
       targetTweetId: target.tweetId,
       targetUrl: target.url,
-      menuItems: quoteMenuItems,
     };
   }
-  if (!composer) {
-    return {
-      success: false,
-      message: 'Could not find quote composer textbox',
-      targetTweetId: target.tweetId,
-      targetUrl: target.url,
-      menuItems: quoteMenuItems,
-    };
-  }
-
-  const textInserted = await insertComposerText(pg, composer, quoteText, { delay: 30, scope: composerScope });
-  if (!textInserted) {
-    return { success: false, message: 'Quote composer text did not enable post button', targetTweetId: target.tweetId, targetUrl: target.url };
-  }
-  await sleep(500);
-
-  if (await clickTweetButtonInScope(composerScope)) {
-    const confirmation = await waitForQuotePostConfirmation(pg, composerScope, {
-      targetUrl: target.url,
-      initialRetweetState,
-    });
-    if (confirmation.success) {
-      await randomDelay();
-      return { success: true, message: 'Quote tweet posted', quotedUrl: target.url, targetTweetId: target.tweetId, text };
-    }
-    return { success: false, message: confirmation.message || 'Could not confirm quote tweet was posted', targetTweetId: target.tweetId, targetUrl: target.url };
-  }
-
-  return { success: false, message: 'Could not post quote tweet', targetTweetId: target.tweetId, targetUrl: target.url };
 }
 
 // ============================================================================
