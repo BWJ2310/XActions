@@ -267,15 +267,77 @@ async function clickIfPresent(pg, selector, { timeout = 3000 } = {}) {
 /**
  * Find a menu item by text pattern and click it.
  */
-async function clickMenuItemByText(pg, pattern) {
-  const items = await pg.$$('[role="menuitem"]');
-  for (const item of items) {
-    const text = await item.evaluate((el) => el.textContent);
-    if (pattern.test(text)) {
-      await item.click();
+async function getMenuItemsSnapshot(pg) {
+  try {
+    return await pg.evaluate(() => {
+      return Array.from(document.querySelectorAll('[role="menuitem"], [data-testid^="Dropdown-Item-"], [data-testid="quoteTweet"]'))
+        .map((el) => {
+          const style = window.getComputedStyle(el);
+          if (style.display === 'none' || style.visibility === 'hidden' || el.getAttribute('aria-hidden') === 'true') {
+            return null;
+          }
+
+          return {
+            testId: el.getAttribute('data-testid') || '',
+            text: (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim(),
+            ariaLabel: el.getAttribute('aria-label') || '',
+            ariaDisabled: el.getAttribute('aria-disabled') || '',
+          };
+        })
+        .filter(Boolean)
+        .slice(0, 10);
+    });
+  } catch {
+    return [];
+  }
+}
+
+async function clickMenuItemByText(pg, pattern, { timeout = 3000, selectors = [] } = {}) {
+  const itemSelector = [...selectors, '[role="menuitem"]'].join(', ');
+  const deadline = Date.now() + timeout;
+
+  while (Date.now() < deadline) {
+    const items = await pg.$$(itemSelector);
+    for (const item of items) {
+      const match = await item.evaluate((el, sourcePattern, prioritySelectors) => {
+        const re = new RegExp(sourcePattern.source, sourcePattern.flags);
+        const text = `${el.innerText || ''} ${el.textContent || ''} ${el.getAttribute('aria-label') || ''} ${el.getAttribute('data-testid') || ''}`;
+        const disabled = Boolean(
+          el.hasAttribute('disabled') ||
+          el.getAttribute('aria-disabled') === 'true' ||
+          el.closest('[aria-disabled="true"]'),
+        );
+        const visible = (() => {
+          const style = window.getComputedStyle(el);
+          return style.display !== 'none' && style.visibility !== 'hidden' && el.getAttribute('aria-hidden') !== 'true';
+        })();
+        return visible && !disabled && (
+          re.test(text) ||
+          prioritySelectors.some((selector) => {
+            try {
+              return el.matches(selector);
+            } catch {
+              return false;
+            }
+          })
+        );
+      }, { source: pattern.source, flags: pattern.flags }, selectors);
+      if (!match) continue;
+
+      try {
+        await item.evaluate((el) => el.scrollIntoView({ block: 'center', inline: 'center' }));
+      } catch {}
+      try {
+        await item.click();
+      } catch {
+        await item.evaluate((el) => el.click());
+      }
       return true;
     }
+
+    await sleep(100);
   }
+
   return false;
 }
 
@@ -360,6 +422,17 @@ async function clickTweetButtonInScope(scope) {
   if (!button) return false;
   await button.click();
   return true;
+}
+
+async function findTweetActionButton(scope, selector) {
+  const buttons = await scope.$$(selector);
+  for (const button of buttons) {
+    const belongsToScope = await button.evaluate((el, root) => {
+      return el.closest('article[data-testid="tweet"]') === root;
+    }, scope).catch(() => false);
+    if (belongsToScope) return button;
+  }
+  return buttons[0] || null;
 }
 
 function normalizeUiText(value = '') {
@@ -536,7 +609,7 @@ async function getTargetRetweetState(pg, url) {
   try {
     const { scope } = await getTweetActionScope(pg, url, { timeout: 3000 });
     if (!scope) return '';
-    const button = await scope.$('[data-testid="retweet"], [data-testid="unretweet"]');
+    const button = await findTweetActionButton(scope, '[data-testid="retweet"], [data-testid="unretweet"]');
     if (!button) return '';
     return await button.evaluate((el) => el.getAttribute('data-testid') || '');
   } catch {
@@ -634,6 +707,19 @@ async function insertComposerText(pg, composer, text, { delay = 30, scope = null
   } catch {}
 
   return !scope;
+}
+
+async function openQuoteComposerFromComposePage(pg, target) {
+  await gotoX(pg, 'https://x.com/compose/tweet');
+  await randomDelay(1000, 2000);
+
+  const composerScope = await findComposerScope(pg, { timeout: 10_000 });
+  if (!composerScope) {
+    return { composerScope: null, composer: null };
+  }
+
+  const composer = await composerScope.$('[data-testid="tweetTextarea_0"], [data-testid^="tweetTextarea_"]');
+  return { composerScope, composer };
 }
 
 function normalizeTweetUrl(url) {
@@ -1114,31 +1200,62 @@ export async function x_quote_tweet({ url, tweetUrl, text }) {
     return { success: false, message: 'Could not find target tweet', targetTweetId: target.tweetId, targetUrl: target.url };
   }
 
-  const retweetButton = await scope.$('[data-testid="retweet"], [data-testid="unretweet"]');
+  const retweetButton = await findTweetActionButton(scope, '[data-testid="retweet"], [data-testid="unretweet"]');
   if (!retweetButton) {
     return { success: false, message: 'Could not find retweet button', targetTweetId: target.tweetId, targetUrl: target.url };
   }
-  const initialRetweetState = await retweetButton.evaluate((el) => el.getAttribute('data-testid') || '');
+  let initialRetweetState = await retweetButton.evaluate((el) => el.getAttribute('data-testid') || '');
 
+  try {
+    await retweetButton.evaluate((el) => el.scrollIntoView({ block: 'center', inline: 'center' }));
+  } catch {}
   await retweetButton.click();
-  await sleep(750);
+  await sleep(500);
 
-  const quoteClicked = await clickMenuItemByText(pg, /quote/i);
-  if (!quoteClicked) {
-    return { success: false, message: 'Could not open quote composer', targetTweetId: target.tweetId, targetUrl: target.url };
+  const quoteClicked = await clickMenuItemByText(pg, /quote/i, {
+    timeout: 5000,
+    selectors: ['[data-testid="Dropdown-Item-Quote"]', '[data-testid="quoteTweet"]'],
+  });
+  const quoteMenuItems = quoteClicked ? [] : await getMenuItemsSnapshot(pg);
+
+  let composerScope = null;
+  let composer = null;
+  let quoteText = text;
+
+  if (quoteClicked) {
+    composerScope = await findComposerScope(pg, { timeout: 10_000, dialogOnly: true });
+    composer = composerScope
+      ? await composerScope.$('[data-testid="tweetTextarea_0"], [data-testid^="tweetTextarea_"]')
+      : null;
+  } else {
+    try {
+      await pg.keyboard.press('Escape');
+    } catch {}
+    ({ composerScope, composer } = await openQuoteComposerFromComposePage(pg, target));
+    quoteText = `${text.trim()}\n\n${target.url}`;
+    initialRetweetState = '';
   }
 
-  const composerScope = await findComposerScope(pg, { timeout: 10_000, dialogOnly: true });
   if (!composerScope) {
-    return { success: false, message: 'Could not find quote composer', targetTweetId: target.tweetId, targetUrl: target.url };
+    return {
+      success: false,
+      message: quoteClicked ? 'Could not find quote composer' : 'Could not open quote composer',
+      targetTweetId: target.tweetId,
+      targetUrl: target.url,
+      menuItems: quoteMenuItems,
+    };
   }
-
-  const composer = await composerScope.$('[data-testid="tweetTextarea_0"], [data-testid^="tweetTextarea_"]');
   if (!composer) {
-    return { success: false, message: 'Could not find quote composer textbox', targetTweetId: target.tweetId, targetUrl: target.url };
+    return {
+      success: false,
+      message: 'Could not find quote composer textbox',
+      targetTweetId: target.tweetId,
+      targetUrl: target.url,
+      menuItems: quoteMenuItems,
+    };
   }
 
-  const textInserted = await insertComposerText(pg, composer, text, { delay: 30, scope: composerScope });
+  const textInserted = await insertComposerText(pg, composer, quoteText, { delay: 30, scope: composerScope });
   if (!textInserted) {
     return { success: false, message: 'Quote composer text did not enable post button', targetTweetId: target.tweetId, targetUrl: target.url };
   }
