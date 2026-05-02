@@ -279,10 +279,11 @@ async function clickMenuItemByText(pg, pattern) {
   return false;
 }
 
-async function findComposerScope(pg, { timeout = 8000, replyOnly = false } = {}) {
+async function findComposerScope(pg, { timeout = 8000, replyOnly = false, dialogOnly = false } = {}) {
   try {
-    await pg.waitForFunction((requireReplyContext) => {
-      return Array.from(document.querySelectorAll('[role="dialog"], [data-testid="primaryColumn"]')).some((scope) => {
+    await pg.waitForFunction((requireReplyContext, requireDialog) => {
+      const selector = requireDialog ? '[role="dialog"]' : '[role="dialog"], [data-testid="primaryColumn"]';
+      return Array.from(document.querySelectorAll(selector)).some((scope) => {
         const textbox = scope.querySelector('[data-testid="tweetTextarea_0"], [data-testid^="tweetTextarea_"]');
         const buttons = Array.from(scope.querySelectorAll('[data-testid="tweetButtonInline"], [data-testid="tweetButton"]'));
         const scopeText = (scope.textContent || '').toLowerCase();
@@ -297,14 +298,20 @@ async function findComposerScope(pg, { timeout = 8000, replyOnly = false } = {})
           })
         );
       });
-    }, { timeout }, replyOnly);
+    }, { timeout }, replyOnly, dialogOnly);
   } catch {
     return null;
   }
 
-  const scopes = await pg.$$('[role="dialog"], [data-testid="primaryColumn"]');
+  const scopes = dialogOnly
+    ? await pg.$$('[role="dialog"]')
+    : [
+        ...await pg.$$('[role="dialog"]'),
+        ...await pg.$$('[data-testid="primaryColumn"]'),
+      ];
   for (const scope of scopes) {
-    const isComposer = await scope.evaluate((el, requireReplyContext) => {
+    const isComposer = await scope.evaluate((el, requireReplyContext, requireDialog) => {
+      if (requireDialog && el.getAttribute('role') !== 'dialog') return false;
       const textbox = el.querySelector('[data-testid="tweetTextarea_0"], [data-testid^="tweetTextarea_"]');
       const buttons = Array.from(el.querySelectorAll('[data-testid="tweetButtonInline"], [data-testid="tweetButton"]'));
       const scopeText = (el.textContent || '').toLowerCase();
@@ -318,7 +325,7 @@ async function findComposerScope(pg, { timeout = 8000, replyOnly = false } = {})
           return buttonText.includes('reply');
         })
       ));
-    }, replyOnly);
+    }, replyOnly, dialogOnly);
     if (isComposer) return scope;
   }
 
@@ -1121,7 +1128,7 @@ export async function x_quote_tweet({ url, tweetUrl, text }) {
     return { success: false, message: 'Could not open quote composer', targetTweetId: target.tweetId, targetUrl: target.url };
   }
 
-  const composerScope = await findComposerScope(pg, { timeout: 10_000 });
+  const composerScope = await findComposerScope(pg, { timeout: 10_000, dialogOnly: true });
   if (!composerScope) {
     return { success: false, message: 'Could not find quote composer', targetTweetId: target.tweetId, targetUrl: target.url };
   }
