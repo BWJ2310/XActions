@@ -62,7 +62,7 @@ const SERIALIZE_LOCAL_TOOLS = process.env.XACTIONS_SERIALIZE_LOCAL_TOOLS !== 'fa
 const DEFAULT_LOCAL_TOOL_TIMEOUT_MS = 60_000;
 const DEFAULT_NAVIGATION_TIMEOUT_MS = 20_000;
 const DEFAULT_NAVIGATION_RETRIES = 1;
-const MIN_BROWSER_ACTION_TIMEOUT_MS = 60_000;
+const MIN_BROWSER_ACTION_TIMEOUT_MS = 90_000;
 
 const BROWSER_ACTION_TOOLS = new Set([
   'x_like',
@@ -2170,6 +2170,7 @@ const TOOLS = [
       properties: {
         tweetUrl: { type: 'string', description: 'URL of the tweet to quote' },
         text: { type: 'string', description: 'Your comment text to add' },
+        dryRun: { type: 'boolean', description: 'Open the quote composer, insert text, report button state, then discard without posting' },
       },
       required: ['tweetUrl', 'text'],
     },
@@ -2480,6 +2481,12 @@ async function executeTool(name, args) {
   const pluginTool = getPluginTools().find((t) => t.name === name);
   if (pluginTool?.handler) {
     return await pluginTool.handler(args, { localTools, SESSION_COOKIE });
+  }
+
+  if (name === 'x_quote_tweet' && MODE === 'remote') {
+    throw new Error(
+      'x_quote_tweet is local-only and must use the logged-in browser composer. Run MCP in local mode to quote tweet.',
+    );
   }
 
   if (MODE === 'remote') {

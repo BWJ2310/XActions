@@ -408,7 +408,6 @@ export async function createTweet(v2Client, options) {
   return v2Client.post('/tweets', {
     text: options.text,
     reply: options.replyTo ? { in_reply_to_tweet_id: options.replyTo } : undefined,
-    quote_tweet_id: options.quoteTweet,
     media: options.mediaIds ? { media_ids: options.mediaIds, tagged_user_ids: options.taggedUsers } : undefined,
     poll: options.poll ? {
       options: options.poll.options,

@@ -2,7 +2,7 @@
 /**
  * AI Engagement Endpoints
  *
- * Follow, unfollow, like, retweet, quote-tweet, notifications,
+ * Follow, unfollow, like, retweet, notifications,
  * mute, discovery, and intelligence operations.
  *
  * @module api/routes/ai/engagement
@@ -164,42 +164,6 @@ router.post('/retweet', async (req, res) => {
     return successResponse(res, {
       operationId, status: 'queued', type: 'retweet', tweetId: effectiveTweetId,
       polling: { endpoint: `/api/ai/action/status/${operationId}`, recommendedIntervalMs: 2000 },
-    });
-  } catch (error) {
-    return errorResponse(res, 500, 'ACTION_FAILED', error.message);
-  }
-});
-
-/**
- * POST /api/ai/engagement/quote-tweet
- * Quote-tweet a tweet with comment
- */
-router.post('/quote-tweet', async (req, res) => {
-  const { tweetUrl, tweetId, text } = req.body;
-
-  if (!text) return res.status(400).json({ error: 'INVALID_INPUT', message: 'text is required' });
-  if (!tweetUrl && !tweetId) return res.status(400).json({ error: 'INVALID_INPUT', message: 'tweetUrl or tweetId is required' });
-
-  let effectiveTweetId = tweetId;
-  if (tweetUrl) {
-    const match = tweetUrl.match(/status\/(\d+)/);
-    if (match) effectiveTweetId = match[1];
-  }
-
-  try {
-    const operationId = generateOperationId();
-    const { queueJob } = await import('../../services/jobQueue.js');
-    await queueJob({
-      id: operationId,
-      type: 'quoteTweet',
-      config: { tweetId: effectiveTweetId, text, sessionCookie: req.sessionCookie },
-      source: 'ai-api',
-      createdAt: new Date().toISOString(),
-    });
-
-    return successResponse(res, {
-      operationId, status: 'queued', type: 'quote-tweet', tweetId: effectiveTweetId,
-      polling: { endpoint: `/api/ai/action/status/${operationId}`, recommendedIntervalMs: 3000 },
     });
   } catch (error) {
     return errorResponse(res, 500, 'ACTION_FAILED', error.message);

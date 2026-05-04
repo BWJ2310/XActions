@@ -304,51 +304,6 @@ export async function sendTweet(http, text, options = {}) {
 }
 
 /**
- * Post a quote tweet.
- *
- * @param {Object} http
- * @param {string} text
- * @param {string} quotedTweetId
- * @param {string[]} [mediaIds=[]]
- * @returns {Promise<Tweet>}
- */
-export async function sendQuoteTweet(http, text, quotedTweetId, mediaIds = []) {
-  const endpoint = GRAPHQL_ENDPOINTS.CreateTweet;
-  const url = endpoint.url(endpoint.queryId);
-
-  const variables = {
-    tweet_text: text,
-    dark_request: false,
-    attachment_url: `https://x.com/i/status/${quotedTweetId}`,
-    media: {
-      media_entities: mediaIds.map((id) => ({ media_id: id, tagged_users: [] })),
-      possibly_sensitive: false,
-    },
-    semantic_annotation_ids: [],
-  };
-
-  const body = {
-    variables,
-    features: DEFAULT_FEATURES,
-    queryId: endpoint.queryId,
-  };
-
-  const data = await http.post(url, body);
-  const tweetResult = data?.data?.create_tweet?.tweet_results?.result;
-
-  if (tweetResult) {
-    const tweet = Tweet.fromGraphQL(tweetResult);
-    if (tweet) return tweet;
-  }
-
-  const tweet = new Tweet();
-  tweet.text = text;
-  tweet.isQuote = true;
-  tweet.quotedStatusId = quotedTweetId;
-  return tweet;
-}
-
-/**
  * Delete a tweet.
  *
  * @param {Object} http

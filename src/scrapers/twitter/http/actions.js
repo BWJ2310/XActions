@@ -2,7 +2,7 @@
 /**
  * Twitter HTTP Scraper — Write Actions (Mutations)
  *
- * Post tweets, threads, replies, quote tweets, schedule posts, delete tweets.
+ * Post tweets, threads, replies, schedule posts, delete tweets.
  * All operations use Twitter's internal GraphQL API and require an
  * authenticated session (cookies with auth_token + ct0).
  *
@@ -83,13 +83,6 @@ function getCreatedTweetId(result) {
     null;
 }
 
-function getQuotedTweetId(result) {
-  return result?.legacy?.quoted_status_id_str ||
-    result?.quoted_status_result?.result?.rest_id ||
-    result?.quoted_status?.id_str ||
-    null;
-}
-
 function throwTwitterErrors(json, fallbackMessage) {
   if (!json?.errors?.length) return;
   throw new TwitterApiError(
@@ -110,7 +103,6 @@ function throwTwitterErrors(json, fallbackMessage) {
  * @param {object} [options]
  * @param {string} [options.replyTo] — tweet ID to reply to
  * @param {string[]} [options.mediaIds] — uploaded media IDs to attach
- * @param {string} [options.quoteTweetId] — tweet ID to quote
  * @param {boolean} [options.sensitive=false] — mark media as sensitive
  * @param {boolean} [options.premium=false] — allow >280 chars
  * @param {string[]} [options.excludeReplyUserIds] — user IDs to exclude from reply thread
@@ -123,8 +115,6 @@ export async function postTweet(client, text, options = {}) {
   const {
     replyTo,
     mediaIds = [],
-    quoteTweetId,
-    quoteTweetUrl,
     sensitive = false,
     excludeReplyUserIds = [],
   } = options;
@@ -147,11 +137,6 @@ export async function postTweet(client, text, options = {}) {
       in_reply_to_tweet_id: replyTo,
       exclude_reply_user_ids: excludeReplyUserIds,
     };
-  }
-
-  // Quote tweet
-  if (quoteTweetId) {
-    variables.attachment_url = quoteTweetUrl || `https://x.com/i/status/${quoteTweetId}`;
   }
 
   const json = await client.graphql(queryId, operationName, variables, {
@@ -258,29 +243,6 @@ export async function replyToTweet(client, tweetId, text, options = {}) {
     ...options,
     replyTo: tweetId,
   });
-}
-
-/**
- * Quote-tweet another tweet. Convenience wrapper around postTweet.
- *
- * @param {import('./client.js').TwitterHttpClient} client
- * @param {string} tweetId — tweet to quote
- * @param {string} text — commentary
- * @param {object} [options]
- * @param {string[]} [options.mediaIds]
- * @param {boolean} [options.premium]
- * @param {string} [options.quoteTweetUrl] canonical URL for the tweet being quoted
- * @returns {Promise<object>}
- */
-export async function quoteTweet(client, tweetId, text, options = {}) {
-  const result = await postTweet(client, text, {
-    ...options,
-    quoteTweetId: tweetId,
-  });
-  if (String(getQuotedTweetId(result) || '') !== String(tweetId)) {
-    throw new TwitterApiError('CreateTweet did not return quote attachment confirmation', { data: result });
-  }
-  return result;
 }
 
 /**

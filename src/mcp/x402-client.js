@@ -466,7 +466,6 @@ export async function createX402Client(config) {
     x_post_tweet: '/api/ai/action/post-tweet',
     x_like: '/api/ai/action/like',
     x_retweet: '/api/ai/action/retweet',
-    x_quote_tweet: '/api/ai/action/quote-tweet',
     x_auto_like: '/api/ai/action/auto-like',
     x_auto_follow: '/api/ai/action/auto-follow',
     x_smart_unfollow: '/api/ai/action/smart-unfollow',

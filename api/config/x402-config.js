@@ -380,7 +380,6 @@ export const AI_OPERATION_PRICES = {
   'automation:auto-repost': '$0.03',       // Auto-repost matching tweets
   'automation:plug-replies': '$0.02',      // Auto-plug replies on viral tweets
   'automation:engagement-booster': '$0.03', // Systematic engagement booster
-  'automation:quote-tweet': '$0.03',       // Auto quote-tweet automation
   'automation:repurpose': '$0.02',         // Content repurposer
   'automation:content-calendar': '$0.02',  // Content calendar planner
   'automation:welcome-followers': '$0.02', // Welcome new followers via DM
@@ -508,7 +507,6 @@ export const AI_OPERATION_PRICES = {
   'engagement:unfollow': '$0.002',    // Unfollow a user
   'engagement:like': '$0.002',        // Like a tweet
   'engagement:retweet': '$0.002',     // Retweet
-  'engagement:quote-tweet': '$0.005', // Quote-tweet
   'engagement:auto-follow': '$0.03',  // Auto-follow
   'engagement:smart-unfollow': '$0.03', // Smart unfollow
   'engagement:auto-retweet': '$0.02', // Auto-retweet
@@ -530,7 +528,6 @@ export const AI_OPERATION_PRICES = {
   'action:unfollow': '$0.002',        // Unfollow user
   'action:like': '$0.002',            // Like tweet
   'action:retweet': '$0.002',         // Retweet
-  'action:quote-tweet': '$0.005',     // Quote-tweet
   'action:post-tweet': '$0.005',      // Post tweet
   'action:auto-follow': '$0.03',      // Auto-follow
   'action:smart-unfollow': '$0.03',   // Smart unfollow

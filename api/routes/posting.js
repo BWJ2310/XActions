@@ -16,7 +16,7 @@ router.post('/tweet', async (req, res) => {
       return res.status(400).json({ error: 'Twitter account not connected' });
     }
 
-    const { text, replyTo, quoteTweetId } = req.body;
+    const { text, replyTo } = req.body;
     if (!text) return res.status(400).json({ error: 'Tweet text is required' });
     if (text.length > 25000) return res.status(400).json({ error: 'Tweet exceeds max length' });
 
@@ -25,7 +25,7 @@ router.post('/tweet', async (req, res) => {
         userId: req.user.id,
         type: 'postTweet',
         status: 'pending',
-        config: JSON.stringify({ text, replyTo, quoteTweetId }),
+        config: JSON.stringify({ text, replyTo }),
       },
     });
 
@@ -34,7 +34,7 @@ router.post('/tweet', async (req, res) => {
       operationId: operation.id,
       userId: req.user.id,
       authMethod: req.user.authMethod || 'oauth',
-      config: { text, replyTo, quoteTweetId, sessionCookie: req.user.sessionCookie },
+      config: { text, replyTo, sessionCookie: req.user.sessionCookie },
     });
 
     res.json({ operationId: operation.id, status: 'queued', message: 'Tweet queued' });

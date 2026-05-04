@@ -436,21 +436,6 @@ export class Scraper {
   }
 
   /**
-   * Send a quote tweet.
-   *
-   * @param {string} text - Tweet text
-   * @param {string} quotedTweetId - ID of tweet to quote
-   * @param {string[]} [mediaIds] - Media entity IDs to attach
-   * @returns {Promise<import('./models/Tweet.js').Tweet>}
-   */
-  async sendQuoteTweet(text, quotedTweetId, mediaIds) {
-    this._requireAuth();
-    validateTweetText(text);
-    validateTweetId(quotedTweetId);
-    return tweetsApi.sendQuoteTweet(this._http, text, quotedTweetId, mediaIds);
-  }
-
-  /**
    * Delete a tweet.
    *
    * @param {string} id - Tweet ID

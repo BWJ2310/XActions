@@ -1,7 +1,7 @@
 // Copyright (c) 2024-2026 nich (@nichxbt). Business Source License 1.1.
 /**
  * Tests for Twitter HTTP Actions — postTweet, postThread, deleteTweet,
- * replyToTweet, quoteTweet, schedulePost.
+ * replyToTweet, schedulePost.
  *
  * All tests use mocked client — no real network requests.
  *
@@ -15,7 +15,6 @@ import {
   postThread,
   deleteTweet,
   replyToTweet,
-  quoteTweet,
   schedulePost,
 } from '../../src/scrapers/twitter/http/actions.js';
 import { GRAPHQL, DEFAULT_FEATURES } from '../../src/scrapers/twitter/http/endpoints.js';
@@ -58,28 +57,6 @@ function createMockClient({
     request: vi.fn().mockResolvedValue(
       requestResult ?? { data: { create_scheduled_tweet: { id: 'sched_999' } } },
     ),
-  };
-}
-
-function createQuoteTweetResult({ quotedTweetId = '555' } = {}) {
-  return {
-    data: {
-      create_tweet: {
-        tweet_results: {
-          result: {
-            rest_id: '1234567890',
-            legacy: {
-              id_str: '1234567890',
-              full_text: 'test quote',
-              quoted_status_id_str: quotedTweetId,
-            },
-            quoted_status_result: {
-              result: { rest_id: quotedTweetId },
-            },
-          },
-        },
-      },
-    },
   };
 }
 
@@ -129,23 +106,6 @@ describe('postTweet', () => {
 
     const variables = client.graphql.mock.calls[0][2];
     expect(variables.reply.exclude_reply_user_ids).toEqual(['u1', 'u2']);
-  });
-
-  it('should set attachment_url for quote tweets', async () => {
-    await postTweet(client, 'my take', { quoteTweetId: '555' });
-
-    const variables = client.graphql.mock.calls[0][2];
-    expect(variables.attachment_url).toBe('https://x.com/i/status/555');
-  });
-
-  it('should use explicit quote URL when provided', async () => {
-    await postTweet(client, 'my take', {
-      quoteTweetId: '555',
-      quoteTweetUrl: 'https://x.com/user/status/555',
-    });
-
-    const variables = client.graphql.mock.calls[0][2];
-    expect(variables.attachment_url).toBe('https://x.com/user/status/555');
   });
 
   it('should attach media entities when mediaIds provided', async () => {
@@ -217,9 +177,6 @@ describe('authentication enforcement', () => {
     await expect(replyToTweet(unauthClient, '123', 'hi')).rejects.toThrow(AuthError);
   });
 
-  it('quoteTweet should throw AuthError when not authenticated', async () => {
-    await expect(quoteTweet(unauthClient, '123', 'hi')).rejects.toThrow(AuthError);
-  });
 });
 
 // ============================================================================
@@ -421,49 +378,6 @@ describe('replyToTweet', () => {
     expect(variables.media.media_entities).toEqual([
       { media_id: 'm1', tagged_users: [] },
     ]);
-  });
-});
-
-// ============================================================================
-// quoteTweet
-// ============================================================================
-
-describe('quoteTweet', () => {
-  let client;
-
-  beforeEach(() => {
-    client = createMockClient({ graphqlResult: createQuoteTweetResult() });
-  });
-
-  it('should set quoteTweetId as attachment_url', async () => {
-    await quoteTweet(client, '555', 'my take');
-
-    const variables = client.graphql.mock.calls[0][2];
-    expect(variables.attachment_url).toBe('https://x.com/i/status/555');
-    expect(variables.tweet_text).toBe('my take');
-  });
-
-  it('should forward additional options', async () => {
-    await quoteTweet(client, '555', 'take', { mediaIds: ['m1'] });
-
-    const variables = client.graphql.mock.calls[0][2];
-    expect(variables.media.media_entities).toHaveLength(1);
-    expect(variables.attachment_url).toBe('https://x.com/i/status/555');
-  });
-
-  it('should forward explicit quote URL', async () => {
-    await quoteTweet(client, '555', 'take', {
-      quoteTweetUrl: 'https://x.com/user/status/555',
-    });
-
-    const variables = client.graphql.mock.calls[0][2];
-    expect(variables.attachment_url).toBe('https://x.com/user/status/555');
-  });
-
-  it('should reject quote responses without quote attachment confirmation', async () => {
-    client = createMockClient();
-
-    await expect(quoteTweet(client, '555', 'take')).rejects.toThrow(TwitterApiError);
   });
 });
 

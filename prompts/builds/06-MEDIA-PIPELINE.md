@@ -496,7 +496,6 @@ async sendTweet(text, options = {}) {
       in_reply_to_tweet_id: options.replyTo,
       exclude_reply_user_ids: [],
     } : undefined,
-    quote_tweet_id: options.quoteTweetId || undefined,
   };
   
   const response = await this.httpClient.post(

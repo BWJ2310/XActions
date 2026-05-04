@@ -84,14 +84,6 @@ router.post('/engagement-booster', async (req, res) => {
   return queueOperation(res, generateOperationId(), 'engagementBooster', { session, targetAccounts, actionsPerDay, delayMs });
 });
 
-/** POST /api/ai/automation/quote-tweet-auto */
-router.post('/quote-tweet-auto', async (req, res) => {
-  const session = requireSession(req, res);
-  if (!session) return;
-  const { keywords, commentTemplate, limit = 10 } = req.body;
-  return queueOperation(res, generateOperationId(), 'quoteTweetAuto', { session, keywords, commentTemplate, limit });
-});
-
 /** POST /api/ai/automation/content-repurpose */
 router.post('/content-repurpose', async (req, res) => {
   const session = requireSession(req, res);

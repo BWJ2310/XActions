@@ -158,7 +158,7 @@ describe('createHttpScraper', () => {
       'scrapeFollowers', 'scrapeFollowing', 'scrapeNonFollowers',
       'scrapeLikers', 'scrapeRetweeters', 'scrapeListMembers',
       // Actions
-      'postTweet', 'postThread', 'deleteTweet', 'replyToTweet', 'quoteTweet', 'schedulePost',
+      'postTweet', 'postThread', 'deleteTweet', 'replyToTweet', 'schedulePost',
       // Engagement
       'likeTweet', 'unlikeTweet', 'retweet', 'unretweet',
       'followUser', 'unfollowUser', 'followByUsername',
@@ -215,7 +215,6 @@ describe('barrel index exports', () => {
     expect(typeof mod.postThread).toBe('function');
     expect(typeof mod.deleteTweet).toBe('function');
     expect(typeof mod.replyToTweet).toBe('function');
-    expect(typeof mod.quoteTweet).toBe('function');
     expect(typeof mod.schedulePost).toBe('function');
   });
 

@@ -74,7 +74,6 @@ Create the file src/client/Scraper.js with:
    - getFollowing(userId, count) → AsyncGenerator<Profile>
    - getTrends() → Promise<Array<string>>
    - sendTweet(text, options) → Promise<Tweet>
-   - sendQuoteTweet(text, quotedTweetId, media) → Promise<Tweet>
    - deleteTweet(id) → Promise<void>
    - likeTweet(id) → Promise<void>
    - unlikeTweet(id) → Promise<void>
@@ -393,13 +392,10 @@ Export these functions:
    - options.replyTo → variables.reply = { in_reply_to_tweet_id: options.replyTo, exclude_reply_user_ids: [] }
    - Returns created tweet parsed from response
 
-7. async function sendQuoteTweet(http, text, quotedTweetId, mediaIds) → Tweet
-   - POST CreateTweet with attachment_url set to the quoted tweet URL
-
-8. async function deleteTweet(http, tweetId) → void
+7. async function deleteTweet(http, tweetId) → void
    - POST DeleteTweet endpoint
 
-9. async function likeTweet(http, tweetId) → void
+8. async function likeTweet(http, tweetId) → void
    - POST FavoriteTweet endpoint
    - Body: { variables: { tweet_id: tweetId }, queryId }
 

@@ -374,10 +374,6 @@ const S = {
     type: 'object', required: ['tweetId'],
     properties: { ...sessionProp, tweetId: { type: 'string' } },
   },
-  actionQuoteTweet: {
-    type: 'object', required: ['tweetId', 'text'],
-    properties: { ...sessionProp, tweetId: { type: 'string' }, text: { type: 'string', maxLength: 280 } },
-  },
   actionPostTweet: {
     type: 'object', required: ['text'],
     properties: { ...sessionProp, text: { type: 'string', maxLength: 280 }, replyToTweetId: { type: 'string' } },
@@ -457,10 +453,6 @@ const S = {
   engagementRetweet: {
     type: 'object', required: ['tweetId'],
     properties: { ...sessionProp, tweetId: { type: 'string' } },
-  },
-  engagementQuoteTweet: {
-    type: 'object', required: ['tweetId', 'text'],
-    properties: { ...sessionProp, tweetId: { type: 'string' }, text: { type: 'string', maxLength: 280 } },
   },
   engagementAutoFollow: {
     type: 'object',
@@ -1569,16 +1561,6 @@ Free alternatives: Browser scripts, CLI, and Node.js library at https://xactions
           responses: { 200: ok200('Retweet result'), 402: payment402 },
         },
       },
-      '/api/ai/action/quote-tweet': {
-        post: {
-          tags: ['Actions'],
-          summary: 'Quote-tweet',
-          'x-payment-info': paymentInfo('action:quote-tweet'),
-          'x-bazaar': bazaarExt(S.actionQuoteTweet),
-          requestBody: { required: true, content: { 'application/json': { schema: S.actionQuoteTweet } } },
-          responses: { 200: ok200('Quote tweet result'), 402: payment402 },
-        },
-      },
       '/api/ai/action/post-tweet': {
         post: {
           tags: ['Actions'],
@@ -1794,16 +1776,6 @@ Free alternatives: Browser scripts, CLI, and Node.js library at https://xactions
           'x-bazaar': bazaarExt(S.engagementRetweet),
           requestBody: { required: true, content: { 'application/json': { schema: S.engagementRetweet } } },
           responses: { 200: ok200('Retweet result'), 402: payment402 },
-        },
-      },
-      '/api/ai/engagement/quote-tweet': {
-        post: {
-          tags: ['Engagement'],
-          summary: 'Quote-tweet',
-          'x-payment-info': paymentInfo('engagement:quote-tweet'),
-          'x-bazaar': bazaarExt(S.engagementQuoteTweet),
-          requestBody: { required: true, content: { 'application/json': { schema: S.engagementQuoteTweet } } },
-          responses: { 200: ok200('Quote tweet result'), 402: payment402 },
         },
       },
       '/api/ai/engagement/auto-follow': {
@@ -2968,15 +2940,6 @@ Free alternatives: Browser scripts, CLI, and Node.js library at https://xactions
           'x-payment-info': paymentInfo('automation:engagement-booster'),
           requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', properties: { ...sessionProp } } } } },
           responses: { 200: ok200Async('Engagement booster started'), 402: payment402 },
-        },
-      },
-      '/api/ai/automation/quote-tweet-auto': {
-        post: {
-          tags: ['Automation'],
-          summary: 'Auto quote-tweet matching posts',
-          'x-payment-info': paymentInfo('automation:quote-tweet'),
-          requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', properties: { ...sessionProp, keywords: { type: 'array', items: { type: 'string' } } } } } } },
-          responses: { 200: ok200Async('Quote-tweet automation started'), 402: payment402 },
         },
       },
       '/api/ai/automation/content-repurpose': {
@@ -4257,7 +4220,6 @@ const ALL_PAID_RESOURCES = [
   'POST /api/ai/action/unfollow',
   'POST /api/ai/action/like',
   'POST /api/ai/action/retweet',
-  'POST /api/ai/action/quote-tweet',
   'POST /api/ai/action/post-tweet',
   'POST /api/ai/action/auto-follow',
   'POST /api/ai/action/smart-unfollow',
@@ -4305,7 +4267,6 @@ const ALL_PAID_RESOURCES = [
   'POST /api/ai/engagement/unfollow',
   'POST /api/ai/engagement/like',
   'POST /api/ai/engagement/retweet',
-  'POST /api/ai/engagement/quote-tweet',
   'POST /api/ai/engagement/auto-follow',
   'POST /api/ai/engagement/smart-unfollow',
   'POST /api/ai/engagement/auto-retweet',
@@ -4463,7 +4424,6 @@ const ALL_PAID_RESOURCES = [
   'POST /api/ai/automation/auto-repost',
   'POST /api/ai/automation/plug-replies',
   'POST /api/ai/automation/engagement-booster',
-  'POST /api/ai/automation/quote-tweet-auto',
   'POST /api/ai/automation/content-repurpose',
   'POST /api/ai/automation/content-calendar',
   'POST /api/ai/automation/welcome-followers',

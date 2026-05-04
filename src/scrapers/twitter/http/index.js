@@ -24,7 +24,7 @@ export { scrapeThread, scrapeFullThread, scrapeConversation, parseConversationMo
 export { scrapeFollowers, scrapeFollowing, scrapeNonFollowers, scrapeLikers, scrapeRetweeters, scrapeListMembers } from './relationships.js';
 
 // Action functions (mutations)
-export { postTweet, postThread, deleteTweet, replyToTweet, quoteTweet, schedulePost } from './actions.js';
+export { postTweet, postThread, deleteTweet, replyToTweet, schedulePost } from './actions.js';
 export { likeTweet, unlikeTweet, retweet, unretweet, followUser, unfollowUser, followByUsername, blockUser, unblockUser, muteUser, unmuteUser, bookmarkTweet, unbookmarkTweet, pinTweet, unpinTweet, bulkUnfollow, bulkLike, bulkBlock } from './engagement.js';
 export { uploadMedia, uploadImage, uploadVideo, uploadGif, setAltText, scrapeMedia, downloadMedia, getVideoUrl } from './media.js';
 
@@ -113,7 +113,6 @@ export async function createHttpScraper(options = {}) {
     postThread: (tweets, opts) => actionsMod.postThread(client, tweets, opts),
     deleteTweet: (tweetId) => actionsMod.deleteTweet(client, tweetId),
     replyToTweet: (tweetId, text, opts) => actionsMod.replyToTweet(client, tweetId, text, opts),
-    quoteTweet: (tweetId, text, opts) => actionsMod.quoteTweet(client, tweetId, text, opts),
     schedulePost: (text, scheduledAt, opts) => actionsMod.schedulePost(client, text, scheduledAt, opts),
 
     // Engagement

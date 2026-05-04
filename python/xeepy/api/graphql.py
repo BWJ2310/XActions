@@ -481,7 +481,6 @@ class GraphQLClient:
         self,
         text: str,
         reply_to: str | None = None,
-        quote: str | None = None,
         media_ids: list[str] | None = None,
     ) -> dict:
         """
@@ -490,7 +489,6 @@ class GraphQLClient:
         Args:
             text: Tweet text
             reply_to: Tweet ID to reply to
-            quote: Tweet ID to quote
             media_ids: List of media IDs to attach
             
         Returns:
@@ -511,9 +509,6 @@ class GraphQLClient:
                 "in_reply_to_tweet_id": reply_to,
                 "exclude_reply_user_ids": [],
             }
-        
-        if quote:
-            variables["attachment_url"] = f"https://twitter.com/i/status/{quote}"
         
         if media_ids:
             variables["media"]["media_entities"] = [

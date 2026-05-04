@@ -785,45 +785,6 @@ router.post('/retweet', async (req, res) => {
 });
 
 /**
- * POST /api/ai/action/quote-tweet
- * Quote-tweet with a comment
- */
-router.post('/quote-tweet', async (req, res) => {
-  const { tweetUrl, tweetId, text } = req.body;
-  if (!text) return res.status(400).json({ error: 'INVALID_INPUT', message: 'text is required' });
-  if (!tweetUrl && !tweetId) return res.status(400).json({ error: 'INVALID_INPUT', message: 'tweetUrl or tweetId is required' });
-
-  let effectiveTweetId = tweetId;
-  if (tweetUrl) {
-    const match = tweetUrl.match(/status\/(\d+)/);
-    if (match) effectiveTweetId = match[1];
-  }
-
-  try {
-    const operationId = generateOperationId();
-    const { queueJob } = await import('../../services/jobQueue.js');
-    await queueJob({
-      id: operationId,
-      type: 'quoteTweet',
-      config: { tweetId: effectiveTweetId, text, sessionCookie: req.sessionCookie },
-      source: 'ai-api',
-      createdAt: new Date().toISOString(),
-    });
-
-    res.json({
-      success: true,
-      data: {
-        operationId, status: 'queued', type: 'quote-tweet', tweetId: effectiveTweetId,
-        polling: { endpoint: `/api/ai/action/status/${operationId}`, recommendedIntervalMs: 3000 },
-      },
-      meta: { createdAt: new Date().toISOString() },
-    });
-  } catch (error) {
-    return errorResponse(res, 500, 'ACTION_FAILED', error.message);
-  }
-});
-
-/**
  * POST /api/ai/action/post-tweet
  * Post a new tweet
  */

@@ -702,9 +702,6 @@ export declare class Scraper {
   /** Post a new tweet */
   sendTweet(text: string, options?: SendTweetOptions): Promise<ClientTweet>;
 
-  /** Post a quote tweet */
-  sendQuoteTweet(text: string, quotedTweetId: string, mediaIds?: string[]): Promise<ClientTweet>;
-
   /** Delete a tweet */
   deleteTweet(id: string): Promise<void>;
 

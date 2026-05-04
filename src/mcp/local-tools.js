@@ -45,10 +45,31 @@ let browserIdleTimer = null;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const randomDelay = (min = 1000, max = 3000) =>
   sleep(min + Math.random() * (max - min));
+const withTimeout = async (promise, timeoutMs) => {
+  let timer;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`Timed out after ${timeoutMs}ms`)), timeoutMs);
+        if (timer.unref) timer.unref();
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+};
 const DEFAULT_NAVIGATION_TIMEOUT_MS = 20_000;
 const DEFAULT_NAVIGATION_RETRIES = 1;
 const DEFAULT_TWEET_TARGET_TIMEOUT_MS = 12_000;
 const TWEET_ARTICLE_SELECTOR = 'article[data-testid="tweet"]';
+const COMPOSER_TEXTBOX_SELECTOR = [
+  '[data-testid="tweetTextarea_0"][contenteditable="true"]',
+  '[data-testid^="tweetTextarea_"][contenteditable="true"]',
+  '[role="textbox"][contenteditable="true"]',
+].join(', ');
+const COMPOSER_MODAL_SCOPE_SELECTOR = '[role="dialog"], [role="group"]';
+const COMPOSER_PAGE_SCOPE_SELECTOR = `${COMPOSER_MODAL_SCOPE_SELECTOR}, [data-testid="primaryColumn"]`;
 
 function getNavigationTimeoutMs() {
   const raw = process.env.XACTIONS_NAVIGATION_TIMEOUT_MS;
@@ -61,10 +82,10 @@ function isNavigationTimeoutError(error) {
   return /Navigation timeout/i.test(`${error?.message || ''}`);
 }
 
-async function gotoX(page, url, timeout = getNavigationTimeoutMs()) {
+async function gotoX(page, url, timeout = getNavigationTimeoutMs(), { retries = DEFAULT_NAVIGATION_RETRIES } = {}) {
   let lastError = null;
 
-  for (let attempt = 0; attempt <= DEFAULT_NAVIGATION_RETRIES; attempt++) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       return await page.goto(url, {
         waitUntil: 'domcontentloaded',
@@ -72,11 +93,11 @@ async function gotoX(page, url, timeout = getNavigationTimeoutMs()) {
       });
     } catch (error) {
       lastError = error;
-      if (!isNavigationTimeoutError(error) || attempt === DEFAULT_NAVIGATION_RETRIES) {
+      if (!isNavigationTimeoutError(error) || attempt === retries) {
         throw error;
       }
 
-      console.error(`Navigation timeout loading ${url}; retrying (${attempt + 1}/${DEFAULT_NAVIGATION_RETRIES})`);
+      console.error(`Navigation timeout loading ${url}; retrying (${attempt + 1}/${retries})`);
       try {
         if (!page.isClosed?.()) {
           await page.goto('about:blank', {
@@ -120,48 +141,6 @@ async function getHttpScraper() {
     );
   }
   return httpScraperPromise;
-}
-
-async function getXCookieString(pg) {
-  const cookies = await pg.cookies('https://x.com', 'https://twitter.com');
-  return cookies
-    .filter((cookie) => cookie.name && cookie.value)
-    .map((cookie) => `${cookie.name}=${cookie.value}`)
-    .join('; ');
-}
-
-function getTweetResultId(result) {
-  return result?.rest_id ||
-    result?.id_str ||
-    result?.legacy?.id_str ||
-    result?.tweet?.rest_id ||
-    null;
-}
-
-function getCanonicalTweetUrl(url, tweetId) {
-  const normalized = normalizeTweetUrl(url).replace(/[?#].*$/, '');
-  const match = normalized.match(/^https:\/\/x\.com\/([^/]+)\/status\/(\d+)/i);
-  if (match && match[1].toLowerCase() === 'i' && match[2] === tweetId) return normalized;
-  return `https://x.com/i/status/${tweetId}`;
-}
-
-async function quoteTweetWithBrowserSession(pg, targetUrl, tweetId, text) {
-  const [{ TwitterHttpClient }, { quoteTweet }] = await Promise.all([
-    import('../scrapers/twitter/http/client.js'),
-    import('../scrapers/twitter/http/actions.js'),
-  ]);
-  const cookieString = await getXCookieString(pg);
-  if (!/(^|;\s*)auth_token=/.test(cookieString) || !/(^|;\s*)ct0=/.test(cookieString)) {
-    throw new Error('Missing auth_token or ct0 cookies for quote tweet');
-  }
-  const client = new TwitterHttpClient({ cookies: cookieString, maxRetries: 0 });
-  const result = await quoteTweet(client, tweetId, text, {
-    quoteTweetUrl: getCanonicalTweetUrl(targetUrl, tweetId),
-  });
-  if (result?.errors?.length) {
-    throw new Error(result.errors.map((error) => error.message || error.code || 'X mutation error').join('; '));
-  }
-  return result;
 }
 
 function buildTweetUrl(tweet, fallbackUsername = '') {
@@ -358,17 +337,111 @@ async function clickMenuItemByText(pg, pattern, { timeout = 3000, selectors = []
   return false;
 }
 
+async function clickQuoteMenuItem(pg, { timeout = 3000 } = {}) {
+  const itemSelector = [
+    '[data-testid="Dropdown-Item-Quote"]',
+    '[data-testid="Dropdown"] [role="menuitem"]',
+    '[role="menu"] [role="menuitem"]',
+    'a[role="menuitem"][href="/compose/post"]',
+    'a[role="menuitem"][href*="/compose/post"]',
+  ].join(', ');
+  const deadline = Date.now() + timeout;
+
+  while (Date.now() < deadline) {
+    const items = await pg.$$(itemSelector);
+    for (const item of items) {
+      const details = await item.evaluate((el) => {
+        const clean = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        const text = clean(`${el.innerText || ''} ${el.textContent || ''} ${el.getAttribute('aria-label') || ''}`);
+        const testid = el.getAttribute('data-testid') || '';
+        const href = el.getAttribute('href') || '';
+        const disabled = Boolean(
+          el.hasAttribute('disabled') ||
+          el.getAttribute('aria-disabled') === 'true' ||
+          el.closest('[aria-disabled="true"]'),
+        );
+        const visible = rect.width > 0 &&
+          rect.height > 0 &&
+          style.display !== 'none' &&
+          style.visibility !== 'hidden' &&
+          el.getAttribute('aria-hidden') !== 'true';
+        let pathname = '';
+        try {
+          pathname = href ? new URL(href, window.location.origin).pathname : '';
+        } catch {}
+
+        const normalizedText = text.toLowerCase();
+        const isQuoteHref = pathname === '/compose/post';
+        const isQuoteText = normalizedText === 'quote';
+        const isKnownQuoteTestId = testid === 'Dropdown-Item-Quote';
+        const isRepostAction = /repost|retweet|undo/i.test(`${normalizedText} ${testid}`);
+
+        return {
+          text,
+          testid,
+          href,
+          pathname,
+          visible,
+          disabled,
+          isQuote: visible && !disabled && !isRepostAction && (isQuoteHref || isQuoteText || isKnownQuoteTestId),
+          rect: {
+            x: Math.round(rect.x),
+            y: Math.round(rect.y),
+            width: Math.round(rect.width),
+            height: Math.round(rect.height),
+          },
+        };
+      });
+      if (!details.isQuote) continue;
+
+      logQuoteFlowStage('quote_menu_item_candidate', details);
+      try {
+        await item.evaluate((el) => el.scrollIntoView({ block: 'center', inline: 'center' }));
+      } catch {}
+      try {
+        await item.click();
+      } catch {
+        await item.evaluate((el) => el.click());
+      }
+      return details;
+    }
+
+    await sleep(100);
+  }
+
+  return null;
+}
+
 async function findComposerScope(pg, { timeout = 8000, replyOnly = false, dialogOnly = false } = {}) {
+  const scopeSelector = dialogOnly ? COMPOSER_MODAL_SCOPE_SELECTOR : COMPOSER_PAGE_SCOPE_SELECTOR;
   try {
-    await pg.waitForFunction((requireReplyContext, requireDialog) => {
-      const selector = requireDialog ? '[role="dialog"]' : '[role="dialog"], [data-testid="primaryColumn"]';
-      return Array.from(document.querySelectorAll(selector)).some((scope) => {
-        const textbox = scope.querySelector('[data-testid="tweetTextarea_0"], [data-testid^="tweetTextarea_"]');
-        const buttons = Array.from(scope.querySelectorAll('[data-testid="tweetButtonInline"], [data-testid="tweetButton"]'));
+    await pg.waitForFunction((requireReplyContext, requireDialog, textboxSelector, candidateSelector) => {
+      const isVisible = (el) => {
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return rect.width > 0 &&
+          rect.height > 0 &&
+          style.display !== 'none' &&
+          style.visibility !== 'hidden' &&
+          el.getAttribute('aria-hidden') !== 'true';
+      };
+      return Array.from(document.querySelectorAll(candidateSelector)).some((scope) => {
+        const role = scope.getAttribute('role') || '';
+        if (requireDialog && role !== 'dialog' && role !== 'group') return false;
+        if (!isVisible(scope)) return false;
+
+        const textbox = scope.querySelector(textboxSelector);
+        if (!textbox || !isVisible(textbox)) return false;
+
+        const buttons = Array.from(scope.querySelectorAll('[data-testid="tweetButtonInline"], [data-testid="tweetButton"]'))
+          .filter(isVisible);
         const scopeText = (scope.textContent || '').toLowerCase();
         const hasSubmitButton = buttons.some((button) => {
           const buttonText = `${button.textContent || ''} ${button.getAttribute('aria-label') || ''}`.toLowerCase();
-          return buttonText.includes('reply') || buttonText.includes('post');
+          const testId = button.getAttribute('data-testid') || '';
+          return testId === 'tweetButton' || testId === 'tweetButtonInline' || buttonText.includes('reply') || buttonText.includes('post');
         });
         return textbox && buttons.length > 0 && hasSubmitButton && (
           !requireReplyContext || scopeText.includes('replying to') || buttons.some((button) => {
@@ -377,26 +450,38 @@ async function findComposerScope(pg, { timeout = 8000, replyOnly = false, dialog
           })
         );
       });
-    }, { timeout }, replyOnly, dialogOnly);
+    }, { timeout }, replyOnly, dialogOnly, COMPOSER_TEXTBOX_SELECTOR, scopeSelector);
   } catch {
     return null;
   }
 
-  const scopes = dialogOnly
-    ? await pg.$$('[role="dialog"]')
-    : [
-        ...await pg.$$('[role="dialog"]'),
-        ...await pg.$$('[data-testid="primaryColumn"]'),
-      ];
+  const scopes = await pg.$$(scopeSelector);
   for (const scope of scopes) {
-    const isComposer = await scope.evaluate((el, requireReplyContext, requireDialog) => {
-      if (requireDialog && el.getAttribute('role') !== 'dialog') return false;
-      const textbox = el.querySelector('[data-testid="tweetTextarea_0"], [data-testid^="tweetTextarea_"]');
-      const buttons = Array.from(el.querySelectorAll('[data-testid="tweetButtonInline"], [data-testid="tweetButton"]'));
+    const isComposer = await scope.evaluate((el, requireReplyContext, requireDialog, textboxSelector) => {
+      const role = el.getAttribute('role') || '';
+      if (requireDialog && role !== 'dialog' && role !== 'group') return false;
+
+      const isVisible = (node) => {
+        const rect = node.getBoundingClientRect();
+        const style = window.getComputedStyle(node);
+        return rect.width > 0 &&
+          rect.height > 0 &&
+          style.display !== 'none' &&
+          style.visibility !== 'hidden' &&
+          node.getAttribute('aria-hidden') !== 'true';
+      };
+      if (!isVisible(el)) return false;
+
+      const textbox = el.querySelector(textboxSelector);
+      if (!textbox || !isVisible(textbox)) return false;
+
+      const buttons = Array.from(el.querySelectorAll('[data-testid="tweetButtonInline"], [data-testid="tweetButton"]'))
+        .filter(isVisible);
       const scopeText = (el.textContent || '').toLowerCase();
       const hasSubmitButton = buttons.some((button) => {
         const buttonText = `${button.textContent || ''} ${button.getAttribute('aria-label') || ''}`.toLowerCase();
-        return buttonText.includes('reply') || buttonText.includes('post');
+        const testId = button.getAttribute('data-testid') || '';
+        return testId === 'tweetButton' || testId === 'tweetButtonInline' || buttonText.includes('reply') || buttonText.includes('post');
       });
       return Boolean(textbox && buttons.length > 0 && hasSubmitButton && (
         !requireReplyContext || scopeText.includes('replying to') || buttons.some((button) => {
@@ -404,7 +489,7 @@ async function findComposerScope(pg, { timeout = 8000, replyOnly = false, dialog
           return buttonText.includes('reply');
         })
       ));
-    }, replyOnly, dialogOnly);
+    }, replyOnly, dialogOnly, COMPOSER_TEXTBOX_SELECTOR);
     if (isComposer) return scope;
   }
 
@@ -444,13 +529,457 @@ async function findEnabledTweetButtonInScope(scope) {
   return null;
 }
 
-async function clickTweetButtonInScope(scope) {
+async function getButtonDebug(button) {
+  try {
+    return await button.evaluate((el) => {
+      const rect = el.getBoundingClientRect();
+      const clean = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+      return {
+        testid: el.getAttribute('data-testid') || '',
+        text: clean(el.innerText || el.textContent),
+        ariaLabel: el.getAttribute('aria-label') || '',
+        disabled: Boolean(el.disabled || el.hasAttribute('disabled') || el.getAttribute('aria-disabled') === 'true' || el.closest('[aria-disabled="true"]')),
+        rect: {
+          x: Math.round(rect.x),
+          y: Math.round(rect.y),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+        },
+      };
+    });
+  } catch (error) {
+    return { error: error.message || String(error) };
+  }
+}
+
+async function clickTweetButtonInScope(scope, { debugLabel = '' } = {}) {
   const button = await findEnabledTweetButtonInScope(scope);
   if (!button) return false;
+  if (debugLabel) {
+    logQuoteFlowStage(`${debugLabel}_button_candidate`, await getButtonDebug(button));
+  }
   try {
     await button.evaluate((el) => el.scrollIntoView({ block: 'center', inline: 'center' }));
   } catch {}
   await button.click();
+  if (debugLabel) logQuoteFlowStage(`${debugLabel}_button_clicked`);
+  return true;
+}
+
+async function getVisibleNoticeText(pg) {
+  try {
+    return await pg.evaluate(() => {
+      const selectors = [
+        '[data-testid="toast"]',
+        '[role="alert"]',
+        '[aria-live="assertive"]',
+        '[aria-live="polite"]',
+      ];
+      const notices = selectors.flatMap((selector) => Array.from(document.querySelectorAll(selector)));
+      for (const notice of notices) {
+        const rect = notice.getBoundingClientRect();
+        const style = window.getComputedStyle(notice);
+        const visible = rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+        const text = (notice.innerText || notice.textContent || '').replace(/\s+/g, ' ').trim();
+        if (visible && text) return text;
+      }
+
+      const bodyText = (document.body?.innerText || '').replace(/\s+/g, ' ').trim();
+      const relevantPatterns = [
+        /this request looks like it might be automated/i,
+        /something went wrong/i,
+        /post failed/i,
+        /could not (send|post)/i,
+        /try again later/i,
+        /rate limit/i,
+      ];
+      const match = relevantPatterns.find((pattern) => pattern.test(bodyText));
+      return match ? bodyText.slice(0, 500) : '';
+    });
+  } catch {
+    return '';
+  }
+}
+
+function classifyPostNotice(text = '') {
+  const normalized = String(text || '').replace(/\s+/g, ' ').trim();
+  if (!normalized) return null;
+
+  if (/this request looks like it might be automated/i.test(normalized)) {
+    return { ok: false, message: 'X blocked the quote tweet as automated' };
+  }
+  if (/something went wrong|post failed|could not (send|post)|try again later|rate limit/i.test(normalized)) {
+    return { ok: false, message: normalized.slice(0, 240) };
+  }
+  if (/(your post was sent|your post has been sent|post sent|posted|sent)/i.test(normalized)) {
+    return { ok: true, message: normalized.slice(0, 240) };
+  }
+
+  return null;
+}
+
+function logQuoteFlowStage(stage, details = {}) {
+  try {
+    const safeDetails = Object.fromEntries(
+      Object.entries(details)
+        .filter(([, value]) => value !== undefined && value !== null)
+        .map(([key, value]) => [key, typeof value === 'string' ? value.slice(0, 240) : value]),
+    );
+    const line = `[x_quote_tweet] ${stage} ${JSON.stringify(safeDetails)}`;
+    console.error(line);
+    if (process.env.XACTIONS_QUOTE_FLOW_LOG) {
+      fs.appendFile(process.env.XACTIONS_QUOTE_FLOW_LOG, `${new Date().toISOString()} ${line}\n`).catch(() => {});
+    }
+  } catch {}
+}
+
+async function getComposerScopeDebug(scope) {
+  try {
+    return await scope.evaluate((el, textboxSelector) => {
+      const clean = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+      const rectFor = (node) => {
+        const rect = node.getBoundingClientRect();
+        return {
+          x: Math.round(rect.x),
+          y: Math.round(rect.y),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+        };
+      };
+      const visible = (node) => {
+        const rect = node.getBoundingClientRect();
+        const style = window.getComputedStyle(node);
+        return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden';
+      };
+
+      return {
+        role: el.getAttribute('role') || '',
+        rect: rectFor(el),
+        textPreview: clean(el.innerText || el.textContent).slice(0, 280),
+        textboxes: Array.from(el.querySelectorAll(textboxSelector))
+          .filter(visible)
+          .map((node) => ({
+            testid: node.getAttribute('data-testid') || '',
+            role: node.getAttribute('role') || '',
+            ariaLabel: node.getAttribute('aria-label') || '',
+            text: clean(node.innerText || node.textContent).slice(0, 180),
+            rect: rectFor(node),
+          })),
+        buttons: Array.from(el.querySelectorAll('[data-testid="tweetButton"], [data-testid="tweetButtonInline"]'))
+          .filter(visible)
+          .map((node) => ({
+            testid: node.getAttribute('data-testid') || '',
+            text: clean(node.innerText || node.textContent),
+            ariaLabel: node.getAttribute('aria-label') || '',
+            disabled: Boolean(node.disabled || node.hasAttribute('disabled') || node.getAttribute('aria-disabled') === 'true' || node.closest('[aria-disabled="true"]')),
+            rect: rectFor(node),
+          })),
+      };
+    }, COMPOSER_TEXTBOX_SELECTOR);
+  } catch (error) {
+    return { error: error.message || String(error) };
+  }
+}
+
+async function getQuoteComposerReadiness(scope, { expectedText, tweetId, targetUsername } = {}) {
+  try {
+    return await scope.evaluate((el, args, textboxSelector) => {
+      const clean = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+      const visible = (node) => {
+        const rect = node.getBoundingClientRect();
+        const style = window.getComputedStyle(node);
+        return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden';
+      };
+      const rectFor = (node) => {
+        const rect = node.getBoundingClientRect();
+        return {
+          x: Math.round(rect.x),
+          y: Math.round(rect.y),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+        };
+      };
+      const expected = clean(args.expectedText);
+      const username = clean(args.targetUsername).replace(/^@/, '').toLowerCase();
+      const tweetIdValue = clean(args.tweetId);
+      const scopeText = clean(el.innerText || el.textContent);
+      const scopeTextLower = scopeText.toLowerCase();
+      const textboxes = Array.from(el.querySelectorAll(textboxSelector)).filter(visible);
+      const textboxDetails = textboxes.map((node) => ({
+        testid: node.getAttribute('data-testid') || '',
+        role: node.getAttribute('role') || '',
+        ariaLabel: node.getAttribute('aria-label') || '',
+        text: clean(node.innerText || node.textContent),
+        rect: rectFor(node),
+      }));
+      const draftTextMatches = textboxDetails.some((textbox) => textbox.text.includes(expected));
+      const hrefs = Array.from(el.querySelectorAll('a[href]'))
+        .map((node) => node.getAttribute('href') || '')
+        .filter(Boolean);
+      const hasTargetStatusLink = tweetIdValue
+        ? hrefs.some((href) => {
+            try {
+              return new URL(href, window.location.origin).pathname.includes(`/status/${tweetIdValue}`);
+            } catch {
+              return href.includes(`/status/${tweetIdValue}`);
+            }
+          })
+        : false;
+      const hasTargetUsername = username
+        ? scopeTextLower.includes(`@${username}`) || scopeTextLower.includes(username)
+        : false;
+      const quotePreviewNodes = Array.from(el.querySelectorAll('[data-testid="quoteTweet"], article[data-testid="tweet"], button, [role="button"], a[href*="/status/"]'))
+        .filter((node) => visible(node))
+        .map((node) => ({
+          tagName: node.tagName,
+          testid: node.getAttribute('data-testid') || '',
+          role: node.getAttribute('role') || '',
+          text: clean(node.innerText || node.textContent).slice(0, 240),
+          href: node.getAttribute('href') || '',
+          rect: rectFor(node),
+        }));
+      const hasQuoteLabel = /\bquote\b/i.test(scopeText);
+      const hasQuotePreview = hasTargetStatusLink ||
+        (hasQuoteLabel && hasTargetUsername) ||
+        quotePreviewNodes.some((node) => {
+          const nodeText = node.text.toLowerCase();
+          return nodeText.includes('/status/') ||
+            (username && (nodeText.includes(`@${username}`) || nodeText.includes(username))) ||
+            (tweetIdValue && node.href.includes(`/status/${tweetIdValue}`));
+        });
+      const buttons = Array.from(el.querySelectorAll('[data-testid="tweetButton"], [data-testid="tweetButtonInline"]'))
+        .filter(visible)
+        .map((node) => ({
+          testid: node.getAttribute('data-testid') || '',
+          text: clean(node.innerText || node.textContent),
+          ariaLabel: node.getAttribute('aria-label') || '',
+          disabled: Boolean(node.disabled || node.hasAttribute('disabled') || node.getAttribute('aria-disabled') === 'true' || node.closest('[aria-disabled="true"]')),
+          rect: rectFor(node),
+        }));
+
+      return {
+        ready: draftTextMatches && hasQuotePreview,
+        draftTextMatches,
+        hasQuotePreview,
+        hasTargetStatusLink,
+        hasTargetUsername,
+        hasQuoteLabel,
+        scopeTextPreview: scopeText.slice(0, 320),
+        textboxes: textboxDetails,
+        buttons,
+        quotePreviewNodes: quotePreviewNodes.slice(0, 6),
+      };
+    }, { expectedText, tweetId, targetUsername }, COMPOSER_TEXTBOX_SELECTOR);
+  } catch (error) {
+    return {
+      ready: false,
+      error: error.message || String(error),
+    };
+  }
+}
+
+async function getQuoteFlowDebug(pg) {
+  try {
+    return await pg.evaluate((textboxSelector) => {
+      const rectFor = (el) => {
+        const rect = el.getBoundingClientRect();
+        return {
+          x: Math.round(rect.x),
+          y: Math.round(rect.y),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+        };
+      };
+      const clean = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+      const visible = (el) => {
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden';
+      };
+
+      return {
+        url: window.location.href,
+        activeElement: document.activeElement ? {
+          tagName: document.activeElement.tagName,
+          role: document.activeElement.getAttribute('role') || '',
+          testid: document.activeElement.getAttribute('data-testid') || '',
+          ariaLabel: document.activeElement.getAttribute('aria-label') || '',
+          text: clean(document.activeElement.innerText || document.activeElement.textContent).slice(0, 280),
+          rect: rectFor(document.activeElement),
+        } : null,
+        noticeText: clean(Array.from(document.querySelectorAll('[data-testid="toast"], [role="alert"], [aria-live="assertive"], [aria-live="polite"]'))
+          .filter(visible)
+          .map((el) => el.innerText || el.textContent || '')
+          .find(Boolean) || ''),
+        dialogs: Array.from(document.querySelectorAll('[role="dialog"], [role="group"]'))
+          .filter(visible)
+          .slice(0, 4)
+          .map((el) => ({
+            role: el.getAttribute('role'),
+            text: clean(el.innerText || el.textContent).slice(0, 280),
+            rect: rectFor(el),
+          })),
+        textboxes: Array.from(document.querySelectorAll(textboxSelector))
+          .filter(visible)
+          .map((el) => ({
+            testid: el.getAttribute('data-testid'),
+            text: clean(el.innerText || el.textContent).slice(0, 280),
+            rect: rectFor(el),
+          })),
+        submitButtons: Array.from(document.querySelectorAll('[data-testid="tweetButton"], [data-testid="tweetButtonInline"]'))
+          .filter(visible)
+          .map((el) => ({
+            testid: el.getAttribute('data-testid'),
+            text: clean(el.innerText || el.textContent),
+            ariaLabel: el.getAttribute('aria-label') || '',
+            disabled: Boolean(el.disabled || el.hasAttribute('disabled') || el.getAttribute('aria-disabled') === 'true' || el.closest('[aria-disabled="true"]')),
+            rect: rectFor(el),
+          })),
+        quotePreviewCount: document.querySelectorAll('[data-testid="quoteTweet"], [role="dialog"] article[data-testid="tweet"], [role="group"] article[data-testid="tweet"]').length,
+      };
+    }, COMPOSER_TEXTBOX_SELECTOR);
+  } catch (error) {
+    return { error: error.message || String(error) };
+  }
+}
+
+async function composerStillHasText(scope, expectedText) {
+  try {
+    return await scope.evaluate((el, expected) => {
+      if (!document.contains(el)) return false;
+      const rect = el.getBoundingClientRect();
+      const style = window.getComputedStyle(el);
+      const visible = rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+      if (!visible) return false;
+      const text = (el.innerText || el.textContent || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
+      return text.includes(String(expected || '').replace(/\s+/g, ' ').trim());
+    }, expectedText);
+  } catch {
+    return false;
+  }
+}
+
+async function waitForPostSubmissionResult(pg, scope, expectedText, { timeout = 15_000 } = {}) {
+  const deadline = Date.now() + timeout;
+  let sawComposer = true;
+  let composerDisappeared = false;
+
+  while (Date.now() < deadline) {
+    const notice = classifyPostNotice(await getVisibleNoticeText(pg));
+    if (notice) return notice;
+
+    const composerHasDraft = await composerStillHasText(scope, expectedText);
+    if (!composerHasDraft) {
+      sawComposer = false;
+      composerDisappeared = true;
+    }
+
+    await sleep(250);
+  }
+
+  if (sawComposer && await composerStillHasText(scope, expectedText)) {
+    return {
+      ok: false,
+      message: 'Quote tweet was not submitted; composer still contains the draft',
+    };
+  }
+
+  if (composerDisappeared) {
+    return {
+      ok: false,
+      message: 'Quote tweet submission could not be confirmed by X',
+    };
+  }
+
+  return {
+    ok: false,
+    message: 'Timed out waiting for quote tweet submission confirmation',
+  };
+}
+
+async function clickButtonByText(pg, pattern, { timeout = 3000 } = {}) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    const buttons = await pg.$$('button, [role="button"]');
+    for (const button of buttons) {
+      const matches = await button.evaluate((el, sourcePattern, flags) => {
+        const re = new RegExp(sourcePattern, flags);
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        const visible = rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden';
+        const disabled = Boolean(
+          el.disabled ||
+          el.hasAttribute('disabled') ||
+          el.getAttribute('aria-disabled') === 'true' ||
+          el.closest('[aria-disabled="true"]'),
+        );
+        const text = `${el.innerText || ''} ${el.textContent || ''} ${el.getAttribute('aria-label') || ''}`;
+        return visible && !disabled && re.test(text);
+      }, pattern.source, pattern.flags);
+      if (!matches) continue;
+
+      try {
+        await button.evaluate((el) => el.scrollIntoView({ block: 'center', inline: 'center' }));
+      } catch {}
+      try {
+        await button.click();
+      } catch {
+        await button.evaluate((el) => el.click());
+      }
+      return true;
+    }
+
+    await sleep(100);
+  }
+
+  return false;
+}
+
+async function closeQuoteComposer(pg) {
+  const closeSelectors = [
+    '[role="dialog"] [data-testid="app-bar-close"]',
+    '[role="dialog"] button[aria-label="Close"]',
+    '[role="group"] [data-testid="app-bar-close"]',
+    '[role="group"] button[aria-label="Close"]',
+    '[data-testid="app-bar-close"]',
+    'button[aria-label="Close"]',
+  ].join(', ');
+
+  let closeClicked = false;
+  const buttons = await pg.$$(closeSelectors).catch(() => []);
+  for (const button of buttons) {
+    const visible = await button.evaluate((el) => {
+      const rect = el.getBoundingClientRect();
+      const style = window.getComputedStyle(el);
+      return rect.width > 0 &&
+        rect.height > 0 &&
+        style.display !== 'none' &&
+        style.visibility !== 'hidden' &&
+        el.getAttribute('aria-hidden') !== 'true';
+    }).catch(() => false);
+    if (!visible) continue;
+
+    try {
+      await button.click();
+      closeClicked = true;
+      break;
+    } catch {
+      try {
+        await button.evaluate((el) => el.click());
+        closeClicked = true;
+        break;
+      } catch {}
+    }
+  }
+
+  if (!closeClicked) {
+    await pg.keyboard.press('Escape').catch(() => {});
+    closeClicked = true;
+  }
+
+  await sleep(400);
+  await clickButtonByText(pg, /^discard$/i, { timeout: 2500 });
+  await sleep(700);
   return true;
 }
 
@@ -464,6 +993,11 @@ async function waitForTweetButtonEnabled(scope, { timeout = 4000 } = {}) {
 }
 
 async function clearComposerText(pg, composer) {
+  if (!await composerHasText(composer)) return true;
+
+  try {
+    await pg.bringToFront?.();
+  } catch {}
   await composer.focus();
   const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
   try {
@@ -490,7 +1024,8 @@ async function clearComposerText(pg, composer) {
     }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
   });
-  await sleep(150);
+  await sleep(250);
+  return !await composerHasText(composer);
 }
 
 async function insertTextWithExecCommand(composer, value) {
@@ -541,12 +1076,222 @@ async function insertTextCharacterByCharacter(composer, value, { delay = 30 } = 
   return true;
 }
 
+async function insertTextWithKeyboard(pg, composer, value, { delay = 20 } = {}) {
+  try {
+    await pg.bringToFront?.();
+  } catch {}
+  try {
+    await composer.evaluate((el) => el.scrollIntoView({ block: 'center', inline: 'center' }));
+  } catch {}
+  await composer.focus();
+  await composer.click({ delay: 50 });
+  await sleep(100);
+  await pg.keyboard.type(value, { delay });
+  return composerHasText(composer, value);
+}
+
+async function waitForComposerTextState(composer, predicate, { timeout = 2000 } = {}) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    const text = await getComposerText(composer);
+    if (predicate(text)) return true;
+    await sleep(100);
+  }
+  return false;
+}
+
+async function insertTextWithPrimedKeyboard(pg, composer, value, { delay = 60 } = {}) {
+  try {
+    await pg.bringToFront?.();
+  } catch {}
+  try {
+    await composer.evaluate((el) => el.scrollIntoView({ block: 'center', inline: 'center' }));
+  } catch {}
+  await composer.focus();
+  await composer.click({ delay: 50 });
+  await sleep(500);
+
+  await pg.keyboard.type('x', { delay: 20 });
+  const acceptsTyping = await waitForComposerTextState(composer, (text) => text.includes('x'), {
+    timeout: 2500,
+  });
+  if (!acceptsTyping) return false;
+
+  if (!await clearComposerText(pg, composer)) return false;
+
+  await composer.focus();
+  await composer.click({ delay: 50 });
+  await sleep(300);
+  await pg.keyboard.type(value, { delay });
+  await sleep(500);
+  return composerHasText(composer, value);
+}
+
+async function insertTextWithSendCharacter(pg, composer, value) {
+  try {
+    await pg.bringToFront?.();
+  } catch {}
+  try {
+    await composer.evaluate((el) => el.scrollIntoView({ block: 'center', inline: 'center' }));
+  } catch {}
+  await composer.focus();
+  await composer.click({ delay: 50 });
+  await sleep(100);
+  for (const char of String(value || '')) {
+    await pg.keyboard.sendCharacter(char);
+    await sleep(5);
+  }
+  await sleep(300);
+  return composerHasText(composer, value);
+}
+
+async function insertTextWithClipboardPaste(pg, composer, value) {
+  try {
+    await pg.browserContext?.().overridePermissions?.('https://x.com', [
+      'clipboard-read',
+      'clipboard-write',
+    ]);
+  } catch {}
+
+  try {
+    await pg.bringToFront?.();
+  } catch {}
+  try {
+    await composer.evaluate((el) => el.scrollIntoView({ block: 'center', inline: 'center' }));
+  } catch {}
+  await composer.focus();
+  await composer.click({ delay: 50 });
+  await sleep(100);
+
+  try {
+    await withTimeout(
+      pg.evaluate((text) => navigator.clipboard.writeText(text), value),
+      3000,
+    );
+  } catch {
+    return false;
+  }
+
+  const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
+  await pg.keyboard.down(modifier);
+  await pg.keyboard.press('V');
+  await pg.keyboard.up(modifier);
+  await sleep(250);
+  return composerHasText(composer, value);
+}
+
+async function insertTextWithNativeInput(pg, composer, value) {
+  try {
+    await pg.bringToFront?.();
+  } catch {}
+  try {
+    await composer.evaluate((el) => el.scrollIntoView({ block: 'center', inline: 'center' }));
+  } catch {}
+  await composer.focus();
+  await composer.click({ delay: 50 });
+  await sleep(100);
+
+  let client = null;
+  try {
+    if (typeof pg.target === 'function') {
+      client = await pg.target().createCDPSession();
+      await withTimeout(client.send('Input.insertText', { text: value }), 3000);
+    } else if (typeof pg._client === 'function') {
+      await withTimeout(pg._client().send('Input.insertText', { text: value }), 3000);
+    } else {
+      return false;
+    }
+  } finally {
+    try {
+      await client?.detach?.();
+    } catch {}
+  }
+
+  return composerHasText(composer, value);
+}
+
+async function insertTextWithDispatchKeyEvents(pg, composer, value) {
+  try {
+    await pg.bringToFront?.();
+  } catch {}
+  try {
+    await composer.evaluate((el) => el.scrollIntoView({ block: 'center', inline: 'center' }));
+  } catch {}
+  await composer.focus();
+  await composer.click({ delay: 50 });
+  await sleep(100);
+
+  let client = null;
+  try {
+    if (typeof pg.target === 'function') {
+      client = await pg.target().createCDPSession();
+    } else if (typeof pg._client === 'function') {
+      client = pg._client();
+    } else {
+      return false;
+    }
+
+    for (const char of String(value || '')) {
+      await withTimeout(client.send('Input.dispatchKeyEvent', {
+        type: 'char',
+        text: char,
+        unmodifiedText: char,
+      }), 3000);
+      await sleep(5);
+    }
+  } finally {
+    try {
+      await client?.detach?.();
+    } catch {}
+  }
+
+  await sleep(300);
+  return composerHasText(composer, value);
+}
+
+async function getComposerText(composer) {
+  try {
+    return await composer.evaluate((el) => (el.innerText || el.textContent || '')
+      .replace(/\u00a0/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim());
+  } catch {
+    return '';
+  }
+}
+
 async function composerHasText(composer, expectedText = '') {
   return composer.evaluate((el, expected) => {
-    const currentText = (el.innerText || el.textContent || '').replace(/\u00a0/g, ' ').trim();
+    const normalize = (value) => String(value || '')
+      .replace(/\u00a0/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const currentText = normalize(el.innerText || el.textContent || '');
     if (!expected) return currentText.length > 0;
-    return currentText.includes(expected.trim());
+    return currentText.includes(normalize(expected));
   }, expectedText);
+}
+
+async function getComposerInputDebug(composer) {
+  try {
+    return await composer.evaluate((el) => {
+      const clean = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+      const active = document.activeElement;
+      return {
+        isConnected: document.contains(el),
+        isActiveElement: active === el,
+        activeElement: active ? {
+          tagName: active.tagName,
+          role: active.getAttribute('role') || '',
+          testid: active.getAttribute('data-testid') || '',
+          ariaLabel: active.getAttribute('aria-label') || '',
+          text: clean(active.innerText || active.textContent).slice(0, 180),
+        } : null,
+      };
+    });
+  } catch (error) {
+    return { error: error.message || String(error) };
+  }
 }
 
 async function nudgeComposerInput(composer) {
@@ -564,38 +1309,126 @@ async function nudgeComposerInput(composer) {
   });
 }
 
-async function insertComposerText(pg, composer, text, { delay = 30, scope = null } = {}) {
+async function insertComposerText(pg, composer, text, { delay = 30, scope = null, allowDomFallback = true } = {}) {
   const value = String(text || '');
   if (!value) return false;
-  const buttonEnableTimeout = Math.max(4000, Math.min(6000, 2000 + (value.length * 15)));
+  const buttonEnableTimeout = Math.max(1500, Math.min(3000, 500 + (value.length * 5)));
+  const fallbackDelay = Math.max(10, Math.min(delay, 30));
+  const recordAttempt = async (method, ok, error = null) => {
+    logQuoteFlowStage('quote_text_insert_attempt', {
+      method,
+      ok,
+      error: error?.message || null,
+      textAfter: await getComposerText(composer),
+      inputDebug: await getComposerInputDebug(composer),
+    });
+  };
   const waitForComposerReady = async () => {
-    if (!scope) return composerHasText(composer, value);
-    if (await waitForTweetButtonEnabled(scope, { timeout: buttonEnableTimeout })) return true;
     if (!await composerHasText(composer, value)) return false;
+    if (!scope) return true;
     await nudgeComposerInput(composer);
-    return waitForTweetButtonEnabled(scope, { timeout: 1500 });
+    return waitForTweetButtonEnabled(scope, { timeout: buttonEnableTimeout });
   };
 
   await composer.focus();
+  if (scope) await clearComposerText(pg, composer);
 
   try {
-    await composer.type(value, { delay });
-    if (await waitForComposerReady()) return true;
-  } catch {}
+    await insertTextWithClipboardPaste(pg, composer, value);
+    const ok = await waitForComposerReady();
+    await recordAttempt('clipboard-paste', ok);
+    if (ok) return true;
+  } catch (error) {
+    await recordAttempt('clipboard-paste', false, error);
+  }
 
   if (scope) await clearComposerText(pg, composer);
 
   try {
-    await insertTextCharacterByCharacter(composer, value, { delay });
-    if (await waitForComposerReady()) return true;
-  } catch {}
+    await insertTextWithNativeInput(pg, composer, value);
+    const ok = await waitForComposerReady();
+    await recordAttempt('native-input', ok);
+    if (ok) return true;
+  } catch (error) {
+    await recordAttempt('native-input', false, error);
+  }
+
+  try {
+    await insertTextWithPrimedKeyboard(pg, composer, value, { delay: Math.max(50, fallbackDelay) });
+    const ok = await waitForComposerReady();
+    await recordAttempt('primed-keyboard-type', ok);
+    if (ok) return true;
+  } catch (error) {
+    await recordAttempt('primed-keyboard-type', false, error);
+  }
+
+  if (!allowDomFallback) return false;
+
+  if (scope) await clearComposerText(pg, composer);
+
+  try {
+    await insertTextWithSendCharacter(pg, composer, value);
+    const ok = await waitForComposerReady();
+    await recordAttempt('send-character', ok);
+    if (ok) return true;
+  } catch (error) {
+    await recordAttempt('send-character', false, error);
+  }
+
+  if (scope) await clearComposerText(pg, composer);
+
+  try {
+    await insertTextWithDispatchKeyEvents(pg, composer, value);
+    const ok = await waitForComposerReady();
+    await recordAttempt('cdp-char-events', ok);
+    if (ok) return true;
+  } catch (error) {
+    await recordAttempt('cdp-char-events', false, error);
+  }
+
+  if (scope) await clearComposerText(pg, composer);
+
+  try {
+    await insertTextWithKeyboard(pg, composer, value, { delay: fallbackDelay });
+    const ok = await waitForComposerReady();
+    await recordAttempt('keyboard-type', ok);
+    if (ok) return true;
+  } catch (error) {
+    await recordAttempt('keyboard-type', false, error);
+  }
+
+  if (scope) await clearComposerText(pg, composer);
+
+  try {
+    await composer.type(value, { delay: fallbackDelay });
+    const ok = await waitForComposerReady();
+    await recordAttempt('element-type', ok);
+    if (ok) return true;
+  } catch (error) {
+    await recordAttempt('element-type', false, error);
+  }
 
   if (scope) await clearComposerText(pg, composer);
 
   try {
     await insertTextWithExecCommand(composer, value);
-    if (await waitForComposerReady()) return true;
-  } catch {}
+    const ok = await waitForComposerReady();
+    await recordAttempt('exec-command', ok);
+    if (ok) return true;
+  } catch (error) {
+    await recordAttempt('exec-command', false, error);
+  }
+
+  if (scope) await clearComposerText(pg, composer);
+
+  try {
+    await insertTextCharacterByCharacter(composer, value, { delay: fallbackDelay });
+    const ok = await waitForComposerReady();
+    await recordAttempt('exec-command-character', ok);
+    if (ok) return true;
+  } catch (error) {
+    await recordAttempt('exec-command-character', false, error);
+  }
 
   return !scope;
 }
@@ -616,12 +1449,23 @@ function tweetIdFromUrl(url) {
     null;
 }
 
+function tweetUsernameFromUrl(url) {
+  try {
+    const parsed = new URL(normalizeTweetUrl(url));
+    const [username, segment] = parsed.pathname.split('/').filter(Boolean);
+    return segment === 'status' ? username : null;
+  } catch {
+    return String(url || '').match(/(?:x|twitter)\.com\/([^/?#]+)\/status\/\d+/i)?.[1] || null;
+  }
+}
+
 function normalizeTweetTarget({ url, tweetUrl, tweetId } = {}) {
   const raw = url || tweetUrl || tweetId || '';
   const id = tweetIdFromUrl(raw);
   return {
     tweetId: id,
     url: normalizeTweetUrl(raw || (id ? `https://x.com/i/status/${id}` : '')),
+    username: tweetUsernameFromUrl(raw),
   };
 }
 
@@ -705,6 +1549,46 @@ async function getTweetActionScope(pg, url, { timeout = DEFAULT_TWEET_TARGET_TIM
   };
 }
 
+async function getQuoteTargetActionScope(pg, targetUrl, tweetId) {
+  const canonicalUrl = `https://x.com/i/status/${tweetId}`;
+  const attemptUrls = Array.from(new Set([targetUrl, canonicalUrl].filter(Boolean)));
+
+  for (const [index, attemptUrl] of attemptUrls.entries()) {
+    logQuoteFlowStage('target_navigation_attempt', {
+      targetUrl,
+      tweetId,
+      attemptUrl,
+      attempt: index + 1,
+    });
+
+    await gotoX(pg, attemptUrl, Math.min(getNavigationTimeoutMs(), 12_000), { retries: 0 });
+    await randomDelay(800, 1500);
+
+    const result = await getTweetActionScope(pg, attemptUrl, { timeout: 12_000 });
+    if (result.scope) {
+      logQuoteFlowStage('target_scope_found', {
+        targetUrl,
+        tweetId,
+        attemptUrl,
+        attempt: index + 1,
+      });
+      return result;
+    }
+
+    logQuoteFlowStage('target_scope_attempt_missing', {
+      targetUrl,
+      tweetId,
+      attemptUrl,
+      attempt: index + 1,
+      debug: await getQuoteFlowDebug(pg),
+    });
+    await stopPageLoading(pg);
+    await sleep(500);
+  }
+
+  return { tweetId, targetArticle: null, scope: null };
+}
+
 async function openReplyComposer(pg, { url, tweetId, text }) {
   await gotoX(pg, `https://x.com/intent/tweet?in_reply_to=${encodeURIComponent(tweetId)}`);
   await randomDelay();
@@ -724,12 +1608,120 @@ async function openReplyComposer(pg, { url, tweetId, text }) {
     replyScope = await findReplyComposerScope(pg, { timeout: 10_000 });
   }
 
-  const replyBox = await replyScope?.$('[data-testid="tweetTextarea_0"], [data-testid^="tweetTextarea_"]');
+  const replyBox = await replyScope?.$(COMPOSER_TEXTBOX_SELECTOR);
   if (!replyBox) return null;
 
   await replyBox.type(text, { delay: 50 });
   await sleep(500);
   return replyScope;
+}
+
+async function openQuoteComposer(pg, { url, tweetId, text, attempt = 1 }) {
+  const targetUrl = url || `https://x.com/i/status/${tweetId}`;
+  logQuoteFlowStage('opening_target', { targetUrl, tweetId, attempt });
+
+  const { scope } = await getQuoteTargetActionScope(pg, targetUrl, tweetId);
+  if (!scope) {
+    logQuoteFlowStage('target_scope_missing', { targetUrl, tweetId });
+    return null;
+  }
+
+  const retweetButton = await scope.$('[data-testid="retweet"], [data-testid="unretweet"]');
+  if (!retweetButton) {
+    logQuoteFlowStage('retweet_button_missing', { targetUrl, tweetId });
+    return null;
+  }
+  logQuoteFlowStage('retweet_button_candidate', await getButtonDebug(retweetButton));
+
+  try {
+    await retweetButton.evaluate((el) => el.scrollIntoView({ block: 'center', inline: 'center' }));
+  } catch {}
+  await retweetButton.click();
+  logQuoteFlowStage('retweet_menu_clicked', { targetUrl, tweetId });
+  await sleep(800);
+
+  const quoteSelected = await clickQuoteMenuItem(pg, { timeout: 3000 });
+  if (!quoteSelected) {
+    logQuoteFlowStage('quote_menu_item_missing', { targetUrl, tweetId });
+    try {
+      await pg.mouse.click(1, 1);
+    } catch {}
+    return null;
+  }
+  logQuoteFlowStage('quote_menu_item_clicked', { targetUrl, tweetId, selected: quoteSelected });
+
+  try {
+    await pg.waitForFunction(() => window.location.pathname === '/compose/post', { timeout: 4000 });
+  } catch {
+    logQuoteFlowStage('quote_compose_route_missing_after_menu_click', {
+      targetUrl,
+      tweetId,
+      debug: await getQuoteFlowDebug(pg),
+    });
+    return null;
+  }
+
+  const quoteScope = await findComposerScope(pg, { timeout: 6000, dialogOnly: true });
+  const quoteBox = await quoteScope?.$(COMPOSER_TEXTBOX_SELECTOR);
+  if (!quoteBox) {
+    logQuoteFlowStage('quote_composer_missing', { targetUrl, tweetId });
+    return null;
+  }
+  logQuoteFlowStage('quote_composer_found', await getComposerScopeDebug(quoteScope));
+
+  const existingDraft = await getComposerText(quoteBox);
+  if (existingDraft && !String(text || '').includes(existingDraft) && !existingDraft.includes(String(text || '').trim())) {
+    logQuoteFlowStage('quote_stale_draft_found', {
+      targetUrl,
+      tweetId,
+      attempt,
+      existingDraft,
+    });
+    await closeQuoteComposer(pg);
+    if (attempt < 2) {
+      return openQuoteComposer(pg, { url, tweetId, text, attempt: attempt + 1 });
+    }
+    return null;
+  }
+
+  const inserted = await insertComposerText(pg, quoteBox, text, {
+    delay: 20,
+    scope: quoteScope,
+    allowDomFallback: false,
+  });
+  if (!inserted) {
+    logQuoteFlowStage('quote_text_insert_failed', {
+      targetUrl,
+      tweetId,
+      textLength: String(text || '').length,
+      debug: await getComposerScopeDebug(quoteScope),
+    });
+    await closeQuoteComposer(pg);
+    return null;
+  }
+  const readiness = await getQuoteComposerReadiness(quoteScope, {
+    expectedText: text,
+    tweetId,
+    targetUsername: tweetUsernameFromUrl(targetUrl),
+  });
+  if (!readiness.ready) {
+    logQuoteFlowStage('quote_composer_preflight_failed_after_insert', {
+      targetUrl,
+      tweetId,
+      readiness,
+    });
+    await closeQuoteComposer(pg);
+    return null;
+  }
+  logQuoteFlowStage('quote_text_inserted', {
+    targetUrl,
+    tweetId,
+    textLength: String(text || '').length,
+    readiness,
+  });
+
+  await sleep(500);
+  return quoteScope;
 }
 
 /**
@@ -1059,7 +2051,7 @@ export async function x_retweet({ url, tweetUrl }) {
   return { success: false, message: 'Could not retweet', targetTweetId: target.tweetId, targetUrl: target.url };
 }
 
-export async function x_quote_tweet({ url, tweetUrl, text }) {
+export async function x_quote_tweet({ url, tweetUrl, text, dryRun = false }) {
   const target = normalizeTweetTarget({ url, tweetUrl });
   if (!target.tweetId || !target.url) {
     return { success: false, message: 'Invalid tweet URL: expected /status/<id>' };
@@ -1069,28 +2061,134 @@ export async function x_quote_tweet({ url, tweetUrl, text }) {
   }
 
   const { page: pg } = await ensureBrowser();
-  await gotoX(pg, target.url);
-  await randomDelay(500, 1000);
-
+  let quoteScope = null;
   try {
-    const result = await quoteTweetWithBrowserSession(pg, target.url, target.tweetId, text);
-    await randomDelay();
-    return {
-      success: true,
-      message: 'Quote tweet posted',
-      quotedUrl: target.url,
-      targetTweetId: target.tweetId,
-      quoteTweetId: getTweetResultId(result),
+    quoteScope = await openQuoteComposer(pg, {
+      url: target.url,
+      tweetId: target.tweetId,
       text,
-    };
+    });
   } catch (error) {
+    logQuoteFlowStage('quote_flow_error', {
+      targetUrl: target.url,
+      tweetId: target.tweetId,
+      message: error.message || String(error),
+    });
+    const debug = await getQuoteFlowDebug(pg);
+    await recoverAfterTweetTargetMiss(pg);
     return {
       success: false,
-      message: `Could not post quote tweet: ${error.message}`,
+      message: `Quote tweet flow failed: ${error.message || String(error)}`,
       targetTweetId: target.tweetId,
       targetUrl: target.url,
+      debug,
     };
   }
+  if (!quoteScope) {
+    const debug = await getQuoteFlowDebug(pg);
+    await recoverAfterTweetTargetMiss(pg);
+    return {
+      success: false,
+      message: 'Could not open quote tweet composer for target tweet',
+      targetTweetId: target.tweetId,
+      targetUrl: target.url,
+      debug,
+    };
+  }
+
+  if (dryRun) {
+    const debug = await getComposerScopeDebug(quoteScope);
+    const readiness = await getQuoteComposerReadiness(quoteScope, {
+      expectedText: text,
+      tweetId: target.tweetId,
+      targetUsername: target.username,
+    });
+    await closeQuoteComposer(pg);
+    logQuoteFlowStage('quote_dry_run_complete', {
+      targetUrl: target.url,
+      tweetId: target.tweetId,
+      textLength: text.length,
+      readiness,
+    });
+    return {
+      success: readiness.ready,
+      dryRun: true,
+      message: readiness.ready
+        ? 'Quote composer opened, draft inserted, quote preview verified, and composer discarded without posting'
+        : 'Quote composer dry-run failed preflight and was discarded without posting',
+      targetTweetId: target.tweetId,
+      targetUrl: target.url,
+      text,
+      readiness,
+      debug,
+    };
+  }
+
+  const readiness = await getQuoteComposerReadiness(quoteScope, {
+    expectedText: text,
+    tweetId: target.tweetId,
+    targetUsername: target.username,
+  });
+  if (!readiness.ready) {
+    logQuoteFlowStage('quote_pre_post_preflight_failed', {
+      targetUrl: target.url,
+      tweetId: target.tweetId,
+      readiness,
+    });
+    return {
+      success: false,
+      message: 'Refusing to click Post because the quote composer did not contain both the draft text and target quote preview',
+      targetTweetId: target.tweetId,
+      targetUrl: target.url,
+      text,
+      readiness,
+      debug: await getQuoteFlowDebug(pg),
+    };
+  }
+
+  if (await clickTweetButtonInScope(quoteScope, { debugLabel: 'quote_post' })) {
+    const submission = await waitForPostSubmissionResult(pg, quoteScope, text, { timeout: 10_000 });
+    if (!submission.ok) {
+      logQuoteFlowStage('quote_submission_failed', {
+        targetUrl: target.url,
+        tweetId: target.tweetId,
+        message: submission.message || 'Could not post quote tweet',
+      });
+      return {
+        success: false,
+        message: submission.message || 'Could not post quote tweet',
+        targetTweetId: target.tweetId,
+        targetUrl: target.url,
+        text,
+        debug: await getQuoteFlowDebug(pg),
+      };
+    }
+
+    logQuoteFlowStage('quote_submission_confirmed', {
+      targetUrl: target.url,
+      tweetId: target.tweetId,
+      message: submission.message || 'Quote tweet posted',
+    });
+    return {
+      success: true,
+      message: submission.message || 'Quote tweet posted',
+      quotedUrl: target.url,
+      targetTweetId: target.tweetId,
+      text,
+    };
+  }
+
+  logQuoteFlowStage('quote_post_button_missing', {
+    targetUrl: target.url,
+    tweetId: target.tweetId,
+  });
+  return {
+    success: false,
+    message: 'Could not post quote tweet',
+    targetTweetId: target.tweetId,
+    targetUrl: target.url,
+    debug: await getQuoteFlowDebug(pg),
+  };
 }
 
 // ============================================================================
